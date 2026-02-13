@@ -3,9 +3,11 @@ package s3
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -156,4 +158,214 @@ func stringFromMetadata(m map[string]any, key string) string {
 		}
 	}
 	return ""
+}
+
+func parseS3BucketAndKey(s string) (string, string) {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "/")
+	if s == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(s, "/", 2)
+	bucket := strings.TrimSpace(parts[0])
+	key := ""
+	if len(parts) == 2 {
+		key = strings.TrimPrefix(parts[1], "/")
+	}
+	return bucket, key
+}
+
+func (a *Adapter) List(ctx context.Context, clientAny any, listPath string) (models.ListFilesResult, error) {
+	client, ok := clientAny.(*minio.Client)
+	if !ok || client == nil {
+		return models.ListFilesResult{}, transport.ProtocolError(errors.New("invalid s3 client"))
+	}
+	bucket, keyPrefix := parseS3BucketAndKey(listPath)
+	if bucket == "" {
+		return models.ListFilesResult{}, transport.ValidationError(errors.New("bucket required"))
+	}
+	prefix := keyPrefix
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	seenDirs := map[string]bool{}
+	seenFiles := map[string]bool{}
+	entries := make([]models.FileEntry, 0)
+
+	for obj := range client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			if ctx.Err() != nil {
+				return models.ListFilesResult{}, transport.TimeoutError(ctx.Err())
+			}
+			return models.ListFilesResult{}, classifyS3RequestError(obj.Err)
+		}
+		rel := strings.TrimPrefix(obj.Key, prefix)
+		rel = strings.TrimPrefix(rel, "/")
+		if rel == "" {
+			continue
+		}
+		first, rest, hasRest := strings.Cut(rel, "/")
+		if first == "" {
+			continue
+		}
+		if hasRest {
+			if !seenDirs[first] {
+				seenDirs[first] = true
+				entries = append(entries, models.FileEntry{
+					Name:       first,
+					Path:       bucket + "/" + prefix + first,
+					IsDir:      true,
+					Size:       0,
+					ModifiedAt: 0,
+				})
+			}
+			_ = rest
+			continue
+		}
+		if seenFiles[first] {
+			continue
+		}
+		seenFiles[first] = true
+		entries = append(entries, models.FileEntry{
+			Name:       first,
+			Path:       bucket + "/" + prefix + first,
+			IsDir:      false,
+			Size:       obj.Size,
+			ModifiedAt: obj.LastModified.UnixMilli(),
+		})
+	}
+
+	resolved := bucket
+	if keyPrefix != "" {
+		resolved = bucket + "/" + strings.TrimSuffix(prefix, "/")
+	}
+	return models.ListFilesResult{Path: resolved, Entries: entries}, nil
+}
+
+func (a *Adapter) MkdirAll(_ context.Context, _ any, _ string) error {
+	return nil
+}
+
+func (a *Adapter) Download(ctx context.Context, clientAny any, remotePath string, localPath string, onProgress func(written int64, total int64)) error {
+	client, ok := clientAny.(*minio.Client)
+	if !ok || client == nil {
+		return transport.ProtocolError(errors.New("invalid s3 client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	localPath = strings.TrimSpace(localPath)
+	if remotePath == "" || localPath == "" {
+		return transport.ValidationError(errors.New("paths required"))
+	}
+
+	bucket, key := parseS3BucketAndKey(remotePath)
+	if bucket == "" || strings.TrimSpace(key) == "" {
+		return transport.ValidationError(errors.New("invalid s3 path"))
+	}
+
+	var total int64
+	if st, err := client.StatObject(ctx, bucket, key, minio.StatObjectOptions{}); err == nil {
+		total = st.Size
+	}
+
+	obj, err := client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return classifyS3RequestError(err)
+	}
+	defer obj.Close()
+
+	dst, err := os.Create(localPath)
+	if err != nil {
+		return transport.ProtocolError(err)
+	}
+	defer dst.Close()
+
+	buf := make([]byte, 256*1024)
+	var written int64
+	for {
+		n, rerr := obj.Read(buf)
+		if n > 0 {
+			wn, werr := dst.Write(buf[:n])
+			if werr != nil {
+				return transport.ProtocolError(werr)
+			}
+			written += int64(wn)
+			if onProgress != nil {
+				onProgress(written, total)
+			}
+		}
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) {
+				break
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(rerr)
+		}
+	}
+	return nil
+}
+
+func (a *Adapter) Upload(ctx context.Context, clientAny any, localPath string, remotePath string, onProgress func(written int64, total int64)) error {
+	client, ok := clientAny.(*minio.Client)
+	if !ok || client == nil {
+		return transport.ProtocolError(errors.New("invalid s3 client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	localPath = strings.TrimSpace(localPath)
+	if remotePath == "" || localPath == "" {
+		return transport.ValidationError(errors.New("paths required"))
+	}
+
+	bucket, key := parseS3BucketAndKey(remotePath)
+	if bucket == "" || strings.TrimSpace(key) == "" {
+		return transport.ValidationError(errors.New("invalid s3 path"))
+	}
+
+	src, err := os.Open(localPath)
+	if err != nil {
+		return transport.ProtocolError(err)
+	}
+	defer src.Close()
+
+	var total int64
+	if st, err := src.Stat(); err == nil {
+		total = st.Size()
+	}
+
+	reader := io.Reader(src)
+	if onProgress != nil {
+		reader = &progressReader{r: src, total: total, cb: onProgress}
+	}
+
+	_, err = client.PutObject(ctx, bucket, key, reader, total, minio.PutObjectOptions{})
+	if err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return classifyS3RequestError(err)
+	}
+	return nil
+}
+
+type progressReader struct {
+	r     io.Reader
+	total int64
+	cb    func(written int64, total int64)
+	n     int64
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.n += int64(n)
+		if p.cb != nil {
+			p.cb(p.n, p.total)
+		}
+	}
+	return n, err
 }

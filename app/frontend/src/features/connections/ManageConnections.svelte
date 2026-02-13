@@ -172,7 +172,7 @@
   $: storeState = $connectionsStore
 </script>
 
-<div class="h-full min-h-0 flex flex-col gap-4">
+<div class="flex-1 min-h-0 flex flex-col gap-4">
   {#if securityLoading}
     <div class="flex-1 min-h-0 flex items-center justify-center">
       <div class="text-sm text-muted-foreground">Loading…</div>

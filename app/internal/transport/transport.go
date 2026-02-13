@@ -12,4 +12,3 @@ type Adapter interface {
 	Connect(ctx context.Context, profile models.ConnectionProfile) (any, error)
 	Disconnect(ctx context.Context, client any) error
 }
-

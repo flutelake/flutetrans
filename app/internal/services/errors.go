@@ -40,4 +40,3 @@ func storageError(message string, details map[string]any) error {
 func cryptoError(message string, details map[string]any) error {
 	return newServiceError(ErrCodeCrypto, message, details)
 }
-

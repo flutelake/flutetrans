@@ -3,6 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -23,10 +27,11 @@ import (
 )
 
 type ConnectionService struct {
-	ctx      context.Context
-	secure   *crypto.SecureStore
-	store    *storage.ConnectionStore
-	sessions *SessionManager
+	ctx       context.Context
+	secure    *crypto.SecureStore
+	store     *storage.ConnectionStore
+	sessions  *SessionManager
+	transfers *TransferManager
 }
 
 type MasterPasswordStatus struct {
@@ -44,7 +49,7 @@ func NewConnectionService() *ConnectionService {
 		models.ProtocolSMB:    smbTransport.NewAdapter(),
 		models.ProtocolNFS:    nfsTransport.NewAdapter(),
 	})
-	return &ConnectionService{secure: secure, sessions: manager}
+	return &ConnectionService{secure: secure, sessions: manager, transfers: NewTransferManager()}
 }
 
 func (s *ConnectionService) Startup(ctx context.Context) {
@@ -52,6 +57,11 @@ func (s *ConnectionService) Startup(ctx context.Context) {
 	if s.sessions != nil {
 		s.sessions.SetEmitter(func(payload StatusChangedPayload) {
 			runtime.EventsEmit(ctx, "connection:status_changed", payload)
+		})
+	}
+	if s.transfers != nil {
+		s.transfers.SetEmitter(func(payload models.TransfersPayload) {
+			runtime.EventsEmit(ctx, "transfer:updated", payload)
 		})
 	}
 	if s.store == nil {
@@ -317,6 +327,180 @@ func (s *ConnectionService) Disconnect(sessionID string) error {
 	}
 	LogInfo(logCtx, "connection.disconnect", map[string]any{"sessionID": sessionID})
 	return nil
+}
+
+func (s *ConnectionService) ListFiles(sessionID string, requestedPath string) (models.ListFilesResult, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return models.ListFilesResult{}, validationError("sessionID required", nil)
+	}
+	if s.sessions == nil {
+		return models.ListFilesResult{}, newServiceError(ErrCodeProtocol, "session manager not initialized", nil)
+	}
+	session, ok := s.sessions.Get(sessionID)
+	if !ok || session == nil {
+		return models.ListFilesResult{}, validationError("not found", map[string]any{"sessionID": sessionID})
+	}
+	if session.Status != models.StatusConnected || session.Client == nil {
+		return models.ListFilesResult{}, validationError("session not connected", map[string]any{"sessionID": sessionID})
+	}
+	adapter, ok := s.sessions.Adapter(session.Protocol)
+	if !ok {
+		return models.ListFilesResult{}, newServiceError(ErrCodeProtocol, "protocol not supported", map[string]any{"protocol": session.Protocol})
+	}
+	ops, ok := adapter.(transport.FileOps)
+	if !ok {
+		return models.ListFilesResult{}, newServiceError(ErrCodeProtocol, "file operations not supported", map[string]any{"protocol": session.Protocol})
+	}
+
+	listPath := strings.TrimSpace(requestedPath)
+	if listPath == "" {
+		listPath = strings.TrimSpace(session.CurrentPath)
+	}
+	if listPath == "" {
+		listPath = "."
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := ops.List(ctx, session.Client, listPath)
+	if err != nil {
+		return models.ListFilesResult{}, s.mapTransportError(err)
+	}
+	_ = s.sessions.SetCurrentPath(sessionID, result.Path)
+	return result, nil
+}
+
+func (s *ConnectionService) GetTransfers() ([]models.TransferItem, error) {
+	if s.transfers == nil {
+		return []models.TransferItem{}, nil
+	}
+	return s.transfers.List(), nil
+}
+
+func (s *ConnectionService) PickUploadFiles() ([]string, error) {
+	if s.ctx == nil {
+		return nil, newServiceError(ErrCodeProtocol, "runtime not initialized", nil)
+	}
+	paths, err := runtime.OpenMultipleFilesDialog(s.ctx, runtime.OpenDialogOptions{Title: "Select files"})
+	if err != nil {
+		return nil, newServiceError(ErrCodeProtocol, "dialog failed", map[string]any{"error": err.Error()})
+	}
+	return paths, nil
+}
+
+func (s *ConnectionService) StartDownload(sessionID string, remotePath string) (models.TransferItem, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return models.TransferItem{}, validationError("sessionID required", nil)
+	}
+	if strings.TrimSpace(remotePath) == "" {
+		return models.TransferItem{}, validationError("remotePath required", nil)
+	}
+	if s.ctx == nil {
+		return models.TransferItem{}, newServiceError(ErrCodeProtocol, "runtime not initialized", nil)
+	}
+	if s.sessions == nil {
+		return models.TransferItem{}, newServiceError(ErrCodeProtocol, "session manager not initialized", nil)
+	}
+	session, ok := s.sessions.Get(sessionID)
+	if !ok || session == nil {
+		return models.TransferItem{}, validationError("not found", map[string]any{"sessionID": sessionID})
+	}
+	adapter, ok := s.sessions.Adapter(session.Protocol)
+	if !ok {
+		return models.TransferItem{}, newServiceError(ErrCodeProtocol, "protocol not supported", map[string]any{"protocol": session.Protocol})
+	}
+	ops, ok := adapter.(transport.FileOps)
+	if !ok {
+		return models.TransferItem{}, newServiceError(ErrCodeProtocol, "file operations not supported", map[string]any{"protocol": session.Protocol})
+	}
+
+	defaultName := path.Base(remotePath)
+	localPath, err := runtime.SaveFileDialog(s.ctx, runtime.SaveDialogOptions{Title: "Save file", DefaultFilename: defaultName})
+	if err != nil {
+		return models.TransferItem{}, newServiceError(ErrCodeProtocol, "dialog failed", map[string]any{"error": err.Error()})
+	}
+	if strings.TrimSpace(localPath) == "" {
+		return models.TransferItem{}, validationError("canceled", nil)
+	}
+
+	item, err := s.transfers.StartDownload(session, ops, remotePath, localPath)
+	if err != nil {
+		return models.TransferItem{}, s.mapTransportError(err)
+	}
+	return item, nil
+}
+
+func (s *ConnectionService) StartUpload(sessionID string, localPaths []string, remoteDir string) ([]models.TransferItem, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, validationError("sessionID required", nil)
+	}
+	if len(localPaths) == 0 {
+		return nil, validationError("localPaths required", nil)
+	}
+	if s.sessions == nil {
+		return nil, newServiceError(ErrCodeProtocol, "session manager not initialized", nil)
+	}
+	session, ok := s.sessions.Get(sessionID)
+	if !ok || session == nil {
+		return nil, validationError("not found", map[string]any{"sessionID": sessionID})
+	}
+	adapter, ok := s.sessions.Adapter(session.Protocol)
+	if !ok {
+		return nil, newServiceError(ErrCodeProtocol, "protocol not supported", map[string]any{"protocol": session.Protocol})
+	}
+	ops, ok := adapter.(transport.FileOps)
+	if !ok {
+		return nil, newServiceError(ErrCodeProtocol, "file operations not supported", map[string]any{"protocol": session.Protocol})
+	}
+	baseRemote := strings.TrimSpace(remoteDir)
+	if baseRemote == "" {
+		baseRemote = strings.TrimSpace(session.CurrentPath)
+	}
+	if baseRemote == "" {
+		baseRemote = "."
+	}
+
+	items := make([]models.TransferItem, 0)
+
+	for _, lp := range localPaths {
+		lp = strings.TrimSpace(lp)
+		if lp == "" {
+			continue
+		}
+		st, err := os.Stat(lp)
+		if err != nil {
+			continue
+		}
+		if !st.IsDir() {
+			remotePath := path.Join(baseRemote, filepath.Base(lp))
+			_ = ops.MkdirAll(context.Background(), session.Client, path.Dir(remotePath))
+			item, _ := s.transfers.StartUpload(session, ops, lp, remotePath)
+			items = append(items, item)
+			continue
+		}
+
+		root := lp
+		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if d == nil || d.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(root, p)
+			if err != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			remotePath := path.Join(baseRemote, filepath.Base(root), rel)
+			_ = ops.MkdirAll(context.Background(), session.Client, path.Dir(remotePath))
+			item, _ := s.transfers.StartUpload(session, ops, p, remotePath)
+			items = append(items, item)
+			return nil
+		})
+	}
+
+	return items, nil
 }
 
 func (s *ConnectionService) loadProfileByID(id string) (models.ConnectionProfile, error) {

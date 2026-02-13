@@ -27,6 +27,14 @@
       Connections
     </Button>
 
+    <Button
+      size="sm"
+      variant={current === 'transfers' ? 'secondary' : 'ghost'}
+      on:click={() => onSelect('transfers')}
+    >
+      Transfers
+    </Button>
+
     <div class="h-6 w-px bg-border"></div>
 
     {#each sessions as s (s.sessionID)}

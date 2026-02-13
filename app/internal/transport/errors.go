@@ -48,4 +48,3 @@ func ProtocolError(err error) error {
 func ValidationError(err error) error {
 	return &Error{Kind: ErrorKindValidation, Err: err}
 }
-

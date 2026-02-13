@@ -39,4 +39,3 @@ func RedactedProfileFields(profile models.ConnectionProfile) map[string]any {
 		"path":     profile.Path,
 	}
 }
-

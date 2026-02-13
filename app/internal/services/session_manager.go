@@ -65,6 +65,25 @@ func (m *SessionManager) Current() *models.ActiveSession {
 	return m.sessions[m.current]
 }
 
+func (m *SessionManager) Get(sessionID string) (*models.ActiveSession, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[sessionID]
+	return s, ok
+}
+
+func (m *SessionManager) SetCurrentPath(sessionID string, currentPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[sessionID]
+	if !ok || s == nil {
+		return ErrSessionNotFound
+	}
+	s.CurrentPath = currentPath
+	s.LastActivity = time.Now().UnixMilli()
+	return nil
+}
+
 func (m *SessionManager) Adapter(protocol models.ProtocolType) (transport.Adapter, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

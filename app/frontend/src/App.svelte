@@ -2,6 +2,7 @@
   import ManageConnections from './features/connections/ManageConnections.svelte'
   import ActiveSessionsBar from './features/connections/components/ActiveSessionsBar.svelte'
   import FileBrowserPlaceholder from './features/browser/FileBrowserPlaceholder.svelte'
+  import TransfersPage from './features/transfers/TransfersPage.svelte'
   import {connectionsStore, refreshConnections} from './features/connections/state/connectionsStore.js'
   import {sessionsStore} from './features/connections/state/sessionsStore.js'
   import {toasts} from './features/connections/ui/feedback.js'
@@ -96,7 +97,7 @@
   $: canLock = !!(securityStatus?.hasEncryptedStore && securityStatus?.unlocked)
 </script>
 
-<div class="min-h-screen p-6 flex flex-col gap-4">
+<div class="h-screen min-h-0 p-6 flex flex-col gap-4 overflow-hidden">
   <ActiveSessionsBar
     sessions={state.sessions}
     current={state.current}
@@ -106,7 +107,7 @@
     onLock={lockNow}
   />
 
-  <div class="flex-1 min-h-0">
+  <div class="flex-1 min-h-0 flex">
     {#if state.current === 'connections'}
       <ManageConnections
         securityLoading={securityLoading}
@@ -114,10 +115,16 @@
         onSecurityChanged={loadSecurityStatus}
         onConnected={(sessionID) => sessionsStore.setCurrent(sessionID)}
       />
+    {:else if state.current === 'transfers'}
+      <TransfersPage
+        sessions={state.sessions}
+        onSelectSession={(sessionID) => sessionsStore.setCurrent(sessionID)}
+      />
     {:else}
       <FileBrowserPlaceholder
         session={currentSession}
         onDisconnect={(sessionID) => sessionsStore.disconnect(sessionID)}
+        onOpenTransfers={() => sessionsStore.setCurrent('transfers')}
       />
     {/if}
   </div>

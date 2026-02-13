@@ -22,6 +22,10 @@ export function GetMasterPasswordStatus() {
   return window['go']['services']['ConnectionService']['GetMasterPasswordStatus']();
 }
 
+export function GetTransfers() {
+  return window['go']['services']['ConnectionService']['GetTransfers']();
+}
+
 export function InitializeMasterPassword(arg1) {
   return window['go']['services']['ConnectionService']['InitializeMasterPassword'](arg1);
 }
@@ -30,8 +34,16 @@ export function ListConnections() {
   return window['go']['services']['ConnectionService']['ListConnections']();
 }
 
+export function ListFiles(arg1, arg2) {
+  return window['go']['services']['ConnectionService']['ListFiles'](arg1, arg2);
+}
+
 export function LockMasterPassword() {
   return window['go']['services']['ConnectionService']['LockMasterPassword']();
+}
+
+export function PickUploadFiles() {
+  return window['go']['services']['ConnectionService']['PickUploadFiles']();
 }
 
 export function SaveConnection(arg1) {
@@ -40,6 +52,14 @@ export function SaveConnection(arg1) {
 
 export function SetMasterPassword(arg1) {
   return window['go']['services']['ConnectionService']['SetMasterPassword'](arg1);
+}
+
+export function StartDownload(arg1, arg2) {
+  return window['go']['services']['ConnectionService']['StartDownload'](arg1, arg2);
+}
+
+export function StartUpload(arg1, arg2, arg3) {
+  return window['go']['services']['ConnectionService']['StartUpload'](arg1, arg2, arg3);
 }
 
 export function Startup(arg1) {

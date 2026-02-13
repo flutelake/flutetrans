@@ -14,15 +14,25 @@ export function GetConnection(arg1:string):Promise<models.ConnectionProfile>;
 
 export function GetMasterPasswordStatus():Promise<services.MasterPasswordStatus>;
 
+export function GetTransfers():Promise<Array<models.TransferItem>>;
+
 export function InitializeMasterPassword(arg1:string):Promise<void>;
 
 export function ListConnections():Promise<Array<models.ConnectionProfile>>;
 
+export function ListFiles(arg1:string,arg2:string):Promise<models.ListFilesResult>;
+
 export function LockMasterPassword():Promise<void>;
+
+export function PickUploadFiles():Promise<Array<string>>;
 
 export function SaveConnection(arg1:models.ConnectionProfile):Promise<models.ConnectionProfile>;
 
 export function SetMasterPassword(arg1:string):Promise<void>;
+
+export function StartDownload(arg1:string,arg2:string):Promise<models.TransferItem>;
+
+export function StartUpload(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<models.TransferItem>>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 

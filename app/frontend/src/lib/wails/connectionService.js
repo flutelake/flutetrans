@@ -85,3 +85,23 @@ export function connect(id) {
 export function disconnect(sessionID) {
   return call('Disconnect', sessionID)
 }
+
+export function listFiles(sessionID, requestedPath = '') {
+  return call('ListFiles', sessionID, requestedPath)
+}
+
+export function getTransfers() {
+  return call('GetTransfers')
+}
+
+export function pickUploadFiles() {
+  return call('PickUploadFiles')
+}
+
+export function startUpload(sessionID, localPaths, remoteDir = '') {
+  return call('StartUpload', sessionID, localPaths, remoteDir)
+}
+
+export function startDownload(sessionID, remotePath) {
+  return call('StartDownload', sessionID, remotePath)
+}

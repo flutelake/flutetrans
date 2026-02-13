@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -145,6 +147,173 @@ func (a *Adapter) Disconnect(_ context.Context, client any) error {
 	}
 	if c.ssh != nil {
 		return c.ssh.Close()
+	}
+	return nil
+}
+
+func (a *Adapter) List(ctx context.Context, client any, listPath string) (models.ListFilesResult, error) {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.sftp == nil {
+		return models.ListFilesResult{}, transport.ProtocolError(errors.New("invalid sftp client"))
+	}
+	if strings.TrimSpace(listPath) == "" {
+		listPath = "."
+	}
+	items, err := c.sftp.ReadDir(listPath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return models.ListFilesResult{}, transport.TimeoutError(ctx.Err())
+		}
+		return models.ListFilesResult{}, transport.ProtocolError(err)
+	}
+
+	entries := make([]models.FileEntry, 0, len(items))
+	for _, fi := range items {
+		p := fi.Name()
+		if listPath != "." {
+			p = path.Join(listPath, fi.Name())
+		}
+		entries = append(entries, models.FileEntry{
+			Name:       fi.Name(),
+			Path:       p,
+			IsDir:      fi.IsDir(),
+			Size:       fi.Size(),
+			ModifiedAt: fi.ModTime().UnixMilli(),
+		})
+	}
+
+	return models.ListFilesResult{Path: listPath, Entries: entries}, nil
+}
+
+func (a *Adapter) MkdirAll(ctx context.Context, client any, dirPath string) error {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.sftp == nil {
+		return transport.ProtocolError(errors.New("invalid sftp client"))
+	}
+	if strings.TrimSpace(dirPath) == "" || dirPath == "." {
+		return nil
+	}
+	if err := c.sftp.MkdirAll(dirPath); err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return transport.ProtocolError(err)
+	}
+	return nil
+}
+
+func (a *Adapter) Download(ctx context.Context, client any, remotePath string, localPath string, onProgress func(written int64, total int64)) error {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.sftp == nil {
+		return transport.ProtocolError(errors.New("invalid sftp client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	localPath = strings.TrimSpace(localPath)
+	if remotePath == "" || localPath == "" {
+		return transport.ValidationError(errors.New("paths required"))
+	}
+
+	var total int64
+	if st, err := c.sftp.Stat(remotePath); err == nil {
+		total = st.Size()
+	}
+
+	src, err := c.sftp.Open(remotePath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return transport.ProtocolError(err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(localPath)
+	if err != nil {
+		return transport.ProtocolError(err)
+	}
+	defer dst.Close()
+
+	buf := make([]byte, 256*1024)
+	var written int64
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			wn, werr := dst.Write(buf[:n])
+			if werr != nil {
+				return transport.ProtocolError(werr)
+			}
+			written += int64(wn)
+			if onProgress != nil {
+				onProgress(written, total)
+			}
+		}
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) {
+				break
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(rerr)
+		}
+	}
+	return nil
+}
+
+func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remotePath string, onProgress func(written int64, total int64)) error {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.sftp == nil {
+		return transport.ProtocolError(errors.New("invalid sftp client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	localPath = strings.TrimSpace(localPath)
+	if remotePath == "" || localPath == "" {
+		return transport.ValidationError(errors.New("paths required"))
+	}
+
+	src, err := os.Open(localPath)
+	if err != nil {
+		return transport.ProtocolError(err)
+	}
+	defer src.Close()
+
+	var total int64
+	if st, err := src.Stat(); err == nil {
+		total = st.Size()
+	}
+
+	dst, err := c.sftp.Create(remotePath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return transport.ProtocolError(err)
+	}
+	defer dst.Close()
+
+	buf := make([]byte, 256*1024)
+	var written int64
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			wn, werr := dst.Write(buf[:n])
+			if werr != nil {
+				return transport.ProtocolError(werr)
+			}
+			written += int64(wn)
+			if onProgress != nil {
+				onProgress(written, total)
+			}
+		}
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) {
+				break
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(rerr)
+		}
 	}
 	return nil
 }

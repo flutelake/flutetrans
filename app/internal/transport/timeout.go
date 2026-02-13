@@ -20,4 +20,3 @@ func EffectiveTimeout(ctx context.Context, fallback time.Duration) time.Duration
 	}
 	return fallback
 }
-
