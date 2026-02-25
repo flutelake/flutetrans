@@ -3,6 +3,9 @@
 
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
+  import Icon from '@iconify/svelte'
+  import mdiDownload from '@iconify-icons/mdi/download'
+  import mdiUpload from '@iconify-icons/mdi/upload'
 
   import {error as toastError} from '../connections/ui/feedback.js'
   import {transfersStore} from './state/transfersStore.js'
@@ -117,7 +120,13 @@
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-medium break-all">
-                  {t.protocol?.toUpperCase?.() ?? t.protocol} · {t.direction === 'upload' ? 'Upload' : 'Download'} · {t.remotePath}
+                  {t.protocol?.toUpperCase?.() ?? t.protocol} ·
+                  {#if t.direction === 'upload'}
+                    <Icon icon={mdiUpload} class="inline-block h-4 w-4 align-[-0.125em] text-muted-foreground" aria-label="Upload" />
+                  {:else}
+                    <Icon icon={mdiDownload} class="inline-block h-4 w-4 align-[-0.125em] text-muted-foreground" aria-label="Download" />
+                  {/if}
+                  · {t.remotePath}
                 </div>
                 <div class="mt-0.5 text-xs text-muted-foreground break-all">{t.localPath}</div>
                 <div class="mt-0.5 text-xs text-muted-foreground">
