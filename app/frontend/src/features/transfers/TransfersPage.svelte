@@ -46,11 +46,11 @@
     return !!sessions?.some?.(s => s.sessionID === sessionID)
   }
 
-  function filteredItems(items) {
+  function filteredItems(items, activeProtocol, activeDirection) {
     const list = Array.isArray(items) ? items : []
     return list
-      .filter(t => (protocol === 'all' ? true : t.protocol === protocol))
-      .filter(t => (direction === 'all' ? true : t.direction === direction))
+      .filter(t => (activeProtocol === 'all' ? true : t.protocol === activeProtocol))
+      .filter(t => (activeDirection === 'all' ? true : t.direction === activeDirection))
       .slice()
       .sort((a, b) => (Number(b.startedAt ?? 0) || 0) - (Number(a.startedAt ?? 0) || 0))
   }
@@ -72,7 +72,7 @@
   })
 
   $: storeState = $transfersStore
-  $: items = filteredItems(storeState.items)
+  $: items = filteredItems(storeState.items, protocol, direction)
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col gap-4">
