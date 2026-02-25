@@ -31,6 +31,8 @@
 
   $: sessionID = session?.sessionID
   $: connected = session?.status === 'connected'
+  $: profileName = session?.profileName || session?.connectionName || session?.name
+  $: sessionDisplayName = profileName || (sessionID ? sessionID.slice(0, 8) : '')
 
   function formatSize(bytes) {
     const n = Number(bytes ?? 0)
@@ -337,7 +339,13 @@
   <header class="flex items-center justify-between gap-4">
     <div class="min-w-0 text-left">
       <div class="text-xl font-semibold tracking-tight">FileBrowser</div>
-      <div class="text-sm text-muted-foreground">拖拽文件/文件夹到列表区域上传。</div>
+      <div class="text-sm text-muted-foreground">
+        {#if sessionID}
+          来自连接：{sessionDisplayName} · 拖拽文件/文件夹到列表区域上传。
+        {:else}
+          拖拽文件/文件夹到列表区域上传。
+        {/if}
+      </div>
     </div>
 
     <div class="flex items-center gap-2 shrink-0">

@@ -47,7 +47,7 @@
         )}
         on:click={() => onSelect(s.sessionID)}
       >
-        <span class="font-medium">{s.sessionID.slice(0, 8)}</span>
+        <span class="font-medium">{s.profileName || s.sessionID.slice(0, 8)}</span>
         <span class="text-xs opacity-80">{s.status}</span>
       </button>
     {/each}

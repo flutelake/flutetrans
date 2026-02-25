@@ -2,6 +2,7 @@
   import ConnectionList from './components/ConnectionList.svelte'
   import ConnectionForm from './components/ConnectionForm.svelte'
   import {connectionsStore, refreshConnections} from './state/connectionsStore.js'
+  import {sessionsStore} from './state/sessionsStore.js'
   import {
     connect,
     deleteConnection,
@@ -115,7 +116,13 @@
   async function quickConnect(id) {
     actionError = null
     try {
+      const profile = storeState?.items?.find?.(x => x.id === id)
       const sessionID = await connect(id)
+      sessionsStore.setSessionMeta(sessionID, {
+        profileID: id,
+        profileName: profile?.name ?? '',
+        protocol: profile?.protocol ?? ''
+      })
       onConnected(sessionID)
       success('Connecting', `Session ${sessionID.slice(0, 8)}`)
     } catch (err) {

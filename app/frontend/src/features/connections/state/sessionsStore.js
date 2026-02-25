@@ -34,6 +34,11 @@ function createStore() {
     update(s => ({...s, current: id}))
   }
 
+  function setSessionMeta(sessionID, meta) {
+    if (!sessionID) return
+    upsert(sessionID, meta)
+  }
+
   async function connect(profileID) {
     const sessionID = await connectService(profileID)
     setCurrent(sessionID)
@@ -63,7 +68,7 @@ function createStore() {
     }, -1)
   }
 
-  return {subscribe, set, setCurrent, connect, disconnect, startListener}
+  return {subscribe, set, setCurrent, setSessionMeta, connect, disconnect, startListener}
 }
 
 export const sessionsStore = createStore()
