@@ -110,13 +110,7 @@
   </div>
 
   <Card className="flex-1 min-h-0 flex flex-col">
-    <CardHeader className="flex-row items-center justify-between space-y-0">
-      <div class="space-y-1 text-left">
-        <CardTitle className="text-base">Task List</CardTitle>
-        <CardDescription>{items.length} item(s)</CardDescription>
-      </div>
-    </CardHeader>
-    <CardContent className="flex-1 min-h-0">
+    <CardContent className="flex-1 min-h-0 pt-6">
       <div class="h-full min-h-0 overflow-auto space-y-2">
         {#each items as t (t.id)}
           <div class="rounded-md border border-border px-3 py-2 text-left">
@@ -168,4 +162,3 @@
     </CardContent>
   </Card>
 </div>
-
