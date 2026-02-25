@@ -1,7 +1,6 @@
 <script>
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
-  import {onMount} from 'svelte'
 
   import Icon from '@iconify/svelte'
 
@@ -27,7 +26,6 @@
   let entries = []
   let loading = false
   let loadError = null
-  let dropEnabled = false
 
   $: sessionID = session?.sessionID
   $: connected = session?.status === 'connected'
@@ -288,44 +286,6 @@
     }
   }
 
-  function enableDrop() {
-    if (dropEnabled) return
-    const runtime = globalThis?.runtime
-    if (!runtime || typeof runtime.OnFileDrop !== 'function') return
-
-    runtime.OnFileDrop(async (_x, _y, paths) => {
-      if (!sessionID || !connected) return
-      if (!paths || paths.length === 0) return
-      try {
-        await startUpload(sessionID, paths, currentPath)
-        success('Upload started', `${paths.length} item(s)`) 
-      } catch (err) {
-        toastError('Upload failed', err?.message ?? 'Unknown error')
-      }
-    }, true)
-    dropEnabled = true
-  }
-
-  function disableDrop() {
-    const runtime = globalThis?.runtime
-    if (runtime && typeof runtime.OnFileDropOff === 'function') {
-      runtime.OnFileDropOff()
-    }
-    dropEnabled = false
-  }
-
-  onMount(() => {
-    return () => {
-      disableDrop()
-    }
-  })
-
-  $: if (sessionID && connected) {
-    enableDrop()
-  } else {
-    disableDrop()
-  }
-
   $: if (sessionID && connected) {
     load('')
   }
@@ -341,9 +301,9 @@
       <div class="text-xl font-semibold tracking-tight">FileBrowser</div>
       <div class="text-sm text-muted-foreground">
         {#if sessionID}
-          来自连接：{sessionDisplayName} · 拖拽文件/文件夹到列表区域上传。
+          来自连接：{sessionDisplayName}
         {:else}
-          拖拽文件/文件夹到列表区域上传。
+          请选择一个连接以浏览文件。
         {/if}
       </div>
     </div>
@@ -420,7 +380,7 @@
             </div>
           {/if}
 
-          <div class="flex-1 min-h-0 overflow-auto --wails-drop-target">
+          <div class="flex-1 min-h-0 overflow-auto">
             <table class="w-full text-left text-sm">
               <thead class="sticky top-0 bg-card">
                 <tr class="border-b border-border">
