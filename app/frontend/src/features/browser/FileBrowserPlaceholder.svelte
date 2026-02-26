@@ -1,6 +1,7 @@
 <script>
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
+  import {onMount} from 'svelte'
 
   import Icon from '@iconify/svelte'
 
@@ -14,9 +15,11 @@
   import mdiFileCodeOutline from '@iconify-icons/mdi/file-code-outline'
   import mdiFileCsvOutline from '@iconify-icons/mdi/file-csv-outline'
   import mdiFilePdfBox from '@iconify-icons/mdi/file-pdf-box'
+  import mdiDownload from '@iconify-icons/mdi/download'
+  import mdiDeleteOutline from '@iconify-icons/mdi/delete-outline'
 
   import {error as toastError, success} from '../connections/ui/feedback.js'
-  import {listFiles, pickUploadFiles, startDownload, startUpload} from '../../lib/wails/connectionService.js'
+  import {deleteRemotePath, listFiles, pickUploadFiles, startDownload, startUpload} from '../../lib/wails/connectionService.js'
 
   export let session
   export let onDisconnect = (_sessionID) => {}
@@ -26,6 +29,35 @@
   let entries = []
   let loading = false
   let loadError = null
+  let deletingPath = ''
+  let openMenuFor = ''
+  let confirmOpen = false
+  let confirmTarget = null
+
+  function toggleMenu(path) {
+    openMenuFor = openMenuFor === path ? '' : path
+  }
+
+  function closeMenu() {
+    openMenuFor = ''
+  }
+
+  function handleDocumentClick(event) {
+    const path = event?.composedPath?.() ?? []
+    for (const el of path) {
+      if (el instanceof Element && el.hasAttribute('data-file-actions')) {
+        return
+      }
+    }
+    closeMenu()
+  }
+
+  onMount(() => {
+    document.addEventListener('click', handleDocumentClick)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick)
+    }
+  })
 
   $: sessionID = session?.sessionID
   $: connected = session?.status === 'connected'
@@ -274,6 +306,36 @@
     }
   }
 
+  function requestRemove(item) {
+    if (!sessionID || !item) return
+    closeMenu()
+    confirmTarget = item
+    confirmOpen = true
+  }
+
+  function cancelRemove() {
+    confirmOpen = false
+    confirmTarget = null
+  }
+
+  async function confirmRemove() {
+    if (!sessionID || !confirmTarget) return
+    const item = confirmTarget
+
+    deletingPath = item.path
+    confirmOpen = false
+    try {
+      await deleteRemotePath(sessionID, item.path, item.isDir)
+      success('Deleted', item.name)
+      await load(currentPath)
+    } catch (err) {
+      toastError('Delete failed', err?.message ?? 'Unknown error')
+    } finally {
+      deletingPath = ''
+      confirmTarget = null
+    }
+  }
+
   async function uploadViaDialog() {
     if (!sessionID) return
     try {
@@ -294,6 +356,39 @@
   $: sortedEntries = sortEntries(entries)
 </script>
 
+{#if confirmOpen && confirmTarget}
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <button
+      type="button"
+      class="absolute inset-0 bg-background/70 backdrop-blur-sm"
+      aria-label="Close"
+      on:click={cancelRemove}
+    ></button>
+
+    <Card className="relative w-full max-w-md">
+      <CardHeader className="space-y-1 text-left">
+        <CardTitle className="text-base">确认删除</CardTitle>
+        <CardDescription>
+          {confirmTarget.isDir ? '删除文件夹将递归删除其中所有内容。' : '删除文件将无法恢复。'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div class="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm break-all">
+          {confirmTarget.name}
+        </div>
+        <div class="flex items-center justify-end gap-2">
+          <Button variant="secondary" on:click={cancelRemove} disabled={deletingPath === confirmTarget.path}>
+            取消
+          </Button>
+          <Button variant="destructive" on:click={confirmRemove} disabled={deletingPath === confirmTarget.path}>
+            删除
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+{/if}
+
 <div class="flex-1 min-h-0 flex flex-col">
   <div class="flex-1 min-h-0 flex flex-col gap-4">
   <header class="flex items-center justify-between gap-4">
@@ -301,9 +396,9 @@
       <div class="text-xl font-semibold tracking-tight">FileBrowser</div>
       <div class="text-sm text-muted-foreground">
         {#if sessionID}
-          来自连接：{sessionDisplayName}
+          From Connection：{sessionDisplayName}
         {:else}
-          请选择一个连接以浏览文件。
+          Please select a connection to browse files.
         {/if}
       </div>
     </div>
@@ -407,9 +502,44 @@
                     <td class="px-4 py-2.5 text-muted-foreground">{item.isDir ? '' : formatSize(item.size)}</td>
                     <td class="px-4 py-2.5 text-muted-foreground">{formatTime(item.modifiedAt)}</td>
                     <td class="px-4 py-2.5" on:click|stopPropagation>
-                      {#if !item.isDir}
-                        <Button size="sm" variant="secondary" on:click={() => download(item)}>Download</Button>
-                      {/if}
+                      <div class="relative flex items-center justify-end" data-file-actions>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuFor === item.path}
+                          on:click={() => toggleMenu(item.path)}
+                          disabled={loading || deletingPath === item.path}
+                        >
+                          ⋯
+                        </Button>
+
+                        {#if openMenuFor === item.path}
+                          <div class="absolute right-0 top-full z-10 mt-1 w-40 rounded-md border border-border bg-background shadow-md">
+                            {#if !item.isDir}
+                              <button
+                                type="button"
+                                class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs hover:bg-accent"
+                                on:click={() => {
+                                  closeMenu()
+                                  download(item)
+                                }}
+                              >
+                                <Icon icon={mdiDownload} width={16} height={16} class="shrink-0 opacity-80" />
+                                <span>Download</span>
+                              </button>
+                            {/if}
+                            <button
+                              type="button"
+                              class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs text-destructive hover:bg-accent"
+                              on:click={() => requestRemove(item)}
+                            >
+                              <Icon icon={mdiDeleteOutline} width={16} height={16} class="shrink-0 opacity-90" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
                     </td>
                   </tr>
                 {/each}

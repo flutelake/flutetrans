@@ -11,4 +11,5 @@ type FileOps interface {
 	Download(ctx context.Context, client any, remotePath string, localPath string, onProgress func(written int64, total int64)) error
 	Upload(ctx context.Context, client any, localPath string, remotePath string, onProgress func(written int64, total int64)) error
 	MkdirAll(ctx context.Context, client any, path string) error
+	Remove(ctx context.Context, client any, remotePath string, recursive bool) error
 }

@@ -317,3 +317,81 @@ func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remo
 	}
 	return nil
 }
+
+func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, recursive bool) error {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.sftp == nil {
+		return transport.ProtocolError(errors.New("invalid sftp client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return transport.ValidationError(errors.New("remotePath required"))
+	}
+
+	if !recursive {
+		if err := c.sftp.Remove(remotePath); err == nil {
+			return nil
+		}
+		if err := c.sftp.RemoveDirectory(remotePath); err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return transport.ProtocolError(errors.New("delete failed"))
+	}
+
+	var removeDirRecursive func(p string) error
+	removeDirRecursive = func(p string) error {
+		items, err := c.sftp.ReadDir(p)
+		if err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			if rerr := c.sftp.Remove(p); rerr == nil {
+				return nil
+			}
+			return transport.ProtocolError(err)
+		}
+		for _, fi := range items {
+			if fi == nil {
+				continue
+			}
+			name := strings.TrimSpace(fi.Name())
+			if name == "" || name == "." || name == ".." {
+				continue
+			}
+			child := path.Join(p, name)
+			if fi.IsDir() {
+				if err := removeDirRecursive(child); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := c.sftp.Remove(child); err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return transport.ProtocolError(err)
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+		}
+		if err := c.sftp.RemoveDirectory(p); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(err)
+		}
+		return nil
+	}
+
+	if err := c.sftp.Remove(remotePath); err == nil {
+		return nil
+	}
+	if err := c.sftp.RemoveDirectory(remotePath); err == nil {
+		return nil
+	}
+	return removeDirRecursive(remotePath)
+}

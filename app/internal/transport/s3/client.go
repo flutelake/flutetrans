@@ -352,6 +352,59 @@ func (a *Adapter) Upload(ctx context.Context, clientAny any, localPath string, r
 	return nil
 }
 
+func (a *Adapter) Remove(ctx context.Context, clientAny any, remotePath string, recursive bool) error {
+	client, ok := clientAny.(*minio.Client)
+	if !ok || client == nil {
+		return transport.ProtocolError(errors.New("invalid s3 client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return transport.ValidationError(errors.New("remotePath required"))
+	}
+
+	bucket, key := parseS3BucketAndKey(remotePath)
+	if bucket == "" || strings.TrimSpace(key) == "" {
+		return transport.ValidationError(errors.New("invalid s3 path"))
+	}
+
+	if !recursive {
+		if err := client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(err)
+		}
+		return nil
+	}
+
+	prefix := key
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	for obj := range client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(obj.Err)
+		}
+		if err := client.RemoveObject(ctx, bucket, obj.Key, minio.RemoveObjectOptions{}); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(err)
+		}
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+	}
+
+	_ = client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
+	_ = client.RemoveObject(ctx, bucket, prefix, minio.RemoveObjectOptions{})
+	return nil
+}
+
 type progressReader struct {
 	r     io.Reader
 	total int64

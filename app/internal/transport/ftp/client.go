@@ -270,3 +270,78 @@ func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remo
 	}
 	return nil
 }
+
+func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, recursive bool) error {
+	conn, ok := client.(*ftplib.ServerConn)
+	if !ok || conn == nil {
+		return transport.ProtocolError(errors.New("invalid ftp client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return transport.ValidationError(errors.New("remotePath required"))
+	}
+
+	if !recursive {
+		if err := conn.Delete(remotePath); err == nil {
+			return nil
+		}
+		if err := conn.RemoveDir(remotePath); err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return transport.ProtocolError(errors.New("delete failed"))
+	}
+
+	var removeDirRecursive func(p string) error
+	removeDirRecursive = func(p string) error {
+		items, err := conn.List(p)
+		if err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(err)
+		}
+		for _, it := range items {
+			if it == nil {
+				continue
+			}
+			name := strings.TrimSpace(it.Name)
+			if name == "" || name == "." || name == ".." {
+				continue
+			}
+			child := path.Join(p, name)
+			if it.Type == ftplib.EntryTypeFolder {
+				if err := removeDirRecursive(child); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := conn.Delete(child); err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return transport.ProtocolError(err)
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+		}
+		if err := conn.RemoveDir(p); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(err)
+		}
+		return nil
+	}
+
+	if err := conn.Delete(remotePath); err == nil {
+		return nil
+	}
+	if err := conn.RemoveDir(remotePath); err == nil {
+		return nil
+	}
+	return removeDirRecursive(remotePath)
+}

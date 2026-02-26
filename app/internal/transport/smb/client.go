@@ -311,3 +311,30 @@ func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remo
 	}
 	return nil
 }
+
+func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, recursive bool) error {
+	c, ok := client.(*conn)
+	if !ok || c == nil || c.share == nil {
+		return transport.ProtocolError(errors.New("invalid smb client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return transport.ValidationError(errors.New("remotePath required"))
+	}
+	if recursive {
+		if err := c.share.RemoveAll(remotePath); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifySMBError(err)
+		}
+		return nil
+	}
+	if err := c.share.Remove(remotePath); err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return classifySMBError(err)
+	}
+	return nil
+}

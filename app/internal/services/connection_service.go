@@ -370,6 +370,44 @@ func (s *ConnectionService) ListFiles(sessionID string, requestedPath string) (m
 	return result, nil
 }
 
+func (s *ConnectionService) DeleteRemotePath(sessionID string, remotePath string, recursive bool) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return validationError("sessionID required", nil)
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return validationError("remotePath required", nil)
+	}
+	if remotePath == "." || remotePath == "/" {
+		return validationError("remotePath not allowed", map[string]any{"remotePath": remotePath})
+	}
+	if s.sessions == nil {
+		return newServiceError(ErrCodeProtocol, "session manager not initialized", nil)
+	}
+	session, ok := s.sessions.Get(sessionID)
+	if !ok || session == nil {
+		return validationError("not found", map[string]any{"sessionID": sessionID})
+	}
+	if session.Status != models.StatusConnected || session.Client == nil {
+		return validationError("session not connected", map[string]any{"sessionID": sessionID})
+	}
+	adapter, ok := s.sessions.Adapter(session.Protocol)
+	if !ok {
+		return newServiceError(ErrCodeProtocol, "protocol not supported", map[string]any{"protocol": session.Protocol})
+	}
+	ops, ok := adapter.(transport.FileOps)
+	if !ok {
+		return newServiceError(ErrCodeProtocol, "file operations not supported", map[string]any{"protocol": session.Protocol})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := ops.Remove(ctx, session.Client, remotePath, recursive); err != nil {
+		return s.mapTransportError(err)
+	}
+	return nil
+}
+
 func (s *ConnectionService) GetTransfers() ([]models.TransferItem, error) {
 	if s.transfers == nil {
 		return []models.TransferItem{}, nil

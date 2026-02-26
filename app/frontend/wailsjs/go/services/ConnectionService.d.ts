@@ -8,6 +8,8 @@ export function Connect(arg1:string):Promise<string>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
+export function DeleteRemotePath(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function Disconnect(arg1:string):Promise<void>;
 
 export function GetConnection(arg1:string):Promise<models.ConnectionProfile>;

@@ -265,6 +265,78 @@ func (a *Adapter) Upload(ctx context.Context, clientAny any, localPath string, r
 	return nil
 }
 
+func (a *Adapter) Remove(ctx context.Context, clientAny any, remotePath string, recursive bool) error {
+	client, ok := clientAny.(*gowebdav.Client)
+	if !ok || client == nil {
+		return transport.ProtocolError(errors.New("invalid webdav client"))
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" || remotePath == "/" {
+		return transport.ValidationError(errors.New("remotePath required"))
+	}
+
+	if !recursive {
+		if err := client.Remove(remotePath); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyWebDAVError(err)
+		}
+		return nil
+	}
+
+	var removeDirRecursive func(p string) error
+	removeDirRecursive = func(p string) error {
+		items, err := client.ReadDir(p)
+		if err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			if rerr := client.Remove(p); rerr == nil {
+				return nil
+			}
+			return classifyWebDAVError(err)
+		}
+		for _, fi := range items {
+			if fi == nil {
+				continue
+			}
+			name := strings.TrimSpace(fi.Name())
+			if name == "" || name == "." || name == ".." {
+				continue
+			}
+			child := path.Join(p, name)
+			if fi.IsDir() {
+				if err := removeDirRecursive(child); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := client.Remove(child); err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return classifyWebDAVError(err)
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+		}
+		if err := client.Remove(p); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyWebDAVError(err)
+		}
+		return nil
+	}
+
+	if err := client.Remove(remotePath); err == nil {
+		return nil
+	}
+	return removeDirRecursive(remotePath)
+}
+
 type progressReader struct {
 	r     io.Reader
 	total int64

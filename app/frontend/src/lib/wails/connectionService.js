@@ -105,3 +105,7 @@ export function startUpload(sessionID, localPaths, remoteDir = '') {
 export function startDownload(sessionID, remotePath) {
   return call('StartDownload', sessionID, remotePath)
 }
+
+export function deleteRemotePath(sessionID, remotePath, recursive = false) {
+  return call('DeleteRemotePath', sessionID, remotePath, !!recursive)
+}

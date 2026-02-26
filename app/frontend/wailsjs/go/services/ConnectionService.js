@@ -10,6 +10,10 @@ export function DeleteConnection(arg1) {
   return window['go']['services']['ConnectionService']['DeleteConnection'](arg1);
 }
 
+export function DeleteRemotePath(arg1, arg2, arg3) {
+  return window['go']['services']['ConnectionService']['DeleteRemotePath'](arg1, arg2, arg3);
+}
+
 export function Disconnect(arg1) {
   return window['go']['services']['ConnectionService']['Disconnect'](arg1);
 }
