@@ -6,6 +6,8 @@ import {context} from '../models';
 
 export function Connect(arg1:string):Promise<string>;
 
+export function CreateRemoteDir(arg1:string,arg2:string):Promise<void>;
+
 export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DeleteRemotePath(arg1:string,arg2:string,arg3:boolean):Promise<void>;

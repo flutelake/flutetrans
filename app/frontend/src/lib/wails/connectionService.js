@@ -109,3 +109,7 @@ export function startDownload(sessionID, remotePath) {
 export function deleteRemotePath(sessionID, remotePath, recursive = false) {
   return call('DeleteRemotePath', sessionID, remotePath, !!recursive)
 }
+
+export function createRemoteDir(sessionID, dirPath) {
+  return call('CreateRemoteDir', sessionID, dirPath)
+}

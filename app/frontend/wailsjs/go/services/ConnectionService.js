@@ -6,6 +6,10 @@ export function Connect(arg1) {
   return window['go']['services']['ConnectionService']['Connect'](arg1);
 }
 
+export function CreateRemoteDir(arg1, arg2) {
+  return window['go']['services']['ConnectionService']['CreateRemoteDir'](arg1, arg2);
+}
+
 export function DeleteConnection(arg1) {
   return window['go']['services']['ConnectionService']['DeleteConnection'](arg1);
 }

@@ -1,6 +1,7 @@
 <script>
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
+  import {Input} from '$lib/components/ui/input/index.js'
   import {onMount} from 'svelte'
   import {t} from '$lib/i18n/index.js'
 
@@ -20,7 +21,7 @@
   import mdiDeleteOutline from '@iconify-icons/mdi/delete-outline'
 
   import toast from 'svelte-french-toast'
-  import {deleteRemotePath, listFiles, pickUploadFiles, startDownload, startUpload} from '../../lib/wails/connectionService.js'
+  import {createRemoteDir, deleteRemotePath, listFiles, pickUploadFiles, startDownload, startUpload} from '../../lib/wails/connectionService.js'
 
   export let session
   export let onDisconnect = (_sessionID) => {}
@@ -34,6 +35,9 @@
   let openMenuFor = ''
   let confirmOpen = false
   let confirmTarget = null
+  let createDirOpen = false
+  let createDirName = ''
+  let createDirWorking = false
 
   function toastText(title, message) {
     return [title, message].filter(v => v != null && String(v).trim() !== '').join('\n')
@@ -106,6 +110,17 @@
     if (v === '.') return '.'
     if (v === '/') return '/'
     return v
+  }
+
+  function joinRemotePath(base, name) {
+    const b = normalizePath(base)
+    let n = String(name ?? '').trim()
+    n = n.replace(/^\/+/, '').replace(/\/+$/, '')
+    if (!n) return ''
+    if (!b || b === '.') return n
+    if (b === '/') return `/${n}`
+    if (b.endsWith('/')) return `${b}${n}`
+    return `${b}/${n}`
   }
 
   function splitPath(p) {
@@ -355,6 +370,42 @@
     }
   }
 
+  function openCreateDir() {
+    createDirName = ''
+    createDirOpen = true
+  }
+
+  function cancelCreateDir() {
+    if (createDirWorking) return
+    createDirOpen = false
+    createDirName = ''
+  }
+
+  async function confirmCreateDir() {
+    if (!sessionID || createDirWorking) return
+    const name = String(createDirName ?? '').trim()
+    if (!name) return
+    if (isS3BucketListView && name.includes('/')) {
+      toast.error(toastText($t('fileBrowser.toasts.dirCreateFailedTitle'), $t('fileBrowser.folderNamePlaceholder')), {duration: 4000})
+      return
+    }
+    const dirPath = isS3BucketListView ? name : joinRemotePath(currentPath, name)
+    if (!dirPath) return
+
+    createDirWorking = true
+    try {
+      await createRemoteDir(sessionID, dirPath)
+      toast.success(toastText($t('fileBrowser.toasts.dirCreatedTitle'), dirPath), {duration: 3000})
+      createDirOpen = false
+      createDirName = ''
+      await load(currentPath)
+    } catch (err) {
+      toast.error(toastText($t('fileBrowser.toasts.dirCreateFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+    } finally {
+      createDirWorking = false
+    }
+  }
+
   $: if (sessionID && connected) {
     load('')
   }
@@ -396,6 +447,40 @@
   </div>
 {/if}
 
+{#if createDirOpen}
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <button
+      type="button"
+      class="absolute inset-0 bg-background/70 backdrop-blur-sm"
+      aria-label={$t('common.close')}
+      on:click={cancelCreateDir}
+    ></button>
+
+    <Card className="relative w-full max-w-md">
+      <CardHeader className="space-y-1 text-left">
+        <CardTitle className="text-base">{$t('fileBrowser.createFolderTitle')}</CardTitle>
+        <CardDescription>{isS3BucketListView ? '.' : currentPath}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Input
+          bind:value={createDirName}
+          placeholder={$t('fileBrowser.folderNamePlaceholder')}
+          disabled={createDirWorking}
+          on:keydown={(e) => e.key === 'Enter' && confirmCreateDir()}
+        />
+        <div class="flex items-center justify-end gap-2">
+          <Button variant="secondary" on:click={cancelCreateDir} disabled={createDirWorking}>
+            {$t('common.cancel')}
+          </Button>
+          <Button on:click={confirmCreateDir} disabled={createDirWorking}>
+            {$t('common.confirm')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+{/if}
+
 <div class="flex-1 min-h-0 flex flex-col">
   <div class="flex-1 min-h-0 flex flex-col gap-4">
   <header class="flex items-center justify-between gap-4">
@@ -421,6 +506,9 @@
           {$t('fileBrowser.up')}
         </Button>
         <Button size="sm" variant="outline" on:click={() => load(currentPath)} disabled={loading}>{$t('common.refresh')}</Button>
+        <Button size="sm" variant="outline" on:click={openCreateDir} disabled={loading || createDirWorking}>
+          {$t('fileBrowser.newFolder')}
+        </Button>
         <Button size="sm" on:click={uploadViaDialog} disabled={loading || isS3BucketListView}>{$t('fileBrowser.upload')}</Button>
       {/if}
       {#if sessionID}

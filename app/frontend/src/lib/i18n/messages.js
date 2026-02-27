@@ -132,6 +132,9 @@ export const messages = {
       pleaseWait: 'Please wait…',
       up: 'Up',
       disconnect: 'Disconnect',
+      newFolder: 'New folder',
+      createFolderTitle: 'Create folder',
+      folderNamePlaceholder: 'Folder name',
       upload: 'Upload',
       table: {
         name: 'Name',
@@ -148,6 +151,8 @@ export const messages = {
         downloadFailedTitle: 'Download failed',
         deletedTitle: 'Deleted',
         deleteFailedTitle: 'Delete failed',
+        dirCreatedTitle: 'Folder created',
+        dirCreateFailedTitle: 'Create folder failed',
         uploadStartedTitle: 'Upload started',
         uploadStartedMessage: '{count} item(s)',
         uploadFailedTitle: 'Upload failed'
@@ -316,6 +321,9 @@ export const messages = {
       pleaseWait: '请稍候…',
       up: '上一级',
       disconnect: '断开',
+      newFolder: '新建目录',
+      createFolderTitle: '创建目录',
+      folderNamePlaceholder: '目录名称',
       upload: '上传',
       table: {
         name: '名称',
@@ -332,6 +340,8 @@ export const messages = {
         downloadFailedTitle: '下载失败',
         deletedTitle: '已删除',
         deleteFailedTitle: '删除失败',
+        dirCreatedTitle: '目录已创建',
+        dirCreateFailedTitle: '创建目录失败',
         uploadStartedTitle: '开始上传',
         uploadStartedMessage: '{count} 个项目',
         uploadFailedTitle: '上传失败'

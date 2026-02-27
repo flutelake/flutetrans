@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -303,7 +304,7 @@ func (a *Adapter) MkdirAll(ctx context.Context, clientAny any, dirPath string) e
 	if dirPath == "" || dirPath == "." || dirPath == "/" {
 		return nil
 	}
-	bucket, _ := parseS3BucketAndKey(dirPath)
+	bucket, keyPrefix := parseS3BucketAndKey(dirPath)
 	if bucket == "" {
 		return transport.ValidationError(errors.New("invalid s3 path"))
 	}
@@ -316,7 +317,7 @@ func (a *Adapter) MkdirAll(ctx context.Context, clientAny any, dirPath string) e
 		return classifyS3RequestError(err)
 	}
 	if exists {
-		return nil
+		goto ensurePrefix
 	}
 
 	if err := client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
@@ -324,6 +325,36 @@ func (a *Adapter) MkdirAll(ctx context.Context, clientAny any, dirPath string) e
 			return transport.TimeoutError(ctx.Err())
 		}
 		return classifyS3RequestError(err)
+	}
+
+ensurePrefix:
+	keyPrefix = strings.Trim(keyPrefix, "/")
+	if keyPrefix == "" {
+		return nil
+	}
+	parts := strings.Split(keyPrefix, "/")
+	current := ""
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if current == "" {
+			current = part
+		} else {
+			current = current + "/" + part
+		}
+		key := current + "/"
+		_, err := client.PutObject(ctx, bucket, key, bytes.NewReader(nil), 0, minio.PutObjectOptions{})
+		if err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(err)
+		}
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
 	}
 	return nil
 }

@@ -408,6 +408,41 @@ func (s *ConnectionService) DeleteRemotePath(sessionID string, remotePath string
 	return nil
 }
 
+func (s *ConnectionService) CreateRemoteDir(sessionID string, dirPath string) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return validationError("sessionID required", nil)
+	}
+	dirPath = strings.TrimSpace(dirPath)
+	if dirPath == "" || dirPath == "." || dirPath == "/" {
+		return validationError("dirPath required", map[string]any{"dirPath": dirPath})
+	}
+	if s.sessions == nil {
+		return newServiceError(ErrCodeProtocol, "session manager not initialized", nil)
+	}
+	session, ok := s.sessions.Get(sessionID)
+	if !ok || session == nil {
+		return validationError("not found", map[string]any{"sessionID": sessionID})
+	}
+	if session.Status != models.StatusConnected || session.Client == nil {
+		return validationError("session not connected", map[string]any{"sessionID": sessionID})
+	}
+	adapter, ok := s.sessions.Adapter(session.Protocol)
+	if !ok {
+		return newServiceError(ErrCodeProtocol, "protocol not supported", map[string]any{"protocol": session.Protocol})
+	}
+	ops, ok := adapter.(transport.FileOps)
+	if !ok {
+		return newServiceError(ErrCodeProtocol, "file operations not supported", map[string]any{"protocol": session.Protocol})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := ops.MkdirAll(ctx, session.Client, dirPath); err != nil {
+		return s.mapTransportError(err)
+	}
+	return nil
+}
+
 func (s *ConnectionService) GetTransfers() ([]models.TransferItem, error) {
 	if s.transfers == nil {
 		return []models.TransferItem{}, nil
