@@ -139,8 +139,10 @@
           <CardDescription>请输入解锁密码继续使用。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input type="password" bind:value={unlockPassword} placeholder="Master password" />
-          <Button className="w-full" on:click={unlock}>解锁</Button>
+          <form class="space-y-3" on:submit|preventDefault={unlock}>
+            <Input type="password" bind:value={unlockPassword} placeholder="Master password" />
+            <Button className="w-full" type="submit">解锁</Button>
+          </form>
           {#if unlockError}
             <div class="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-left">
               {unlockError.message ?? 'Unlock failed'}
