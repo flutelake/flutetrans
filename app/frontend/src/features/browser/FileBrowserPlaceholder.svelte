@@ -2,6 +2,7 @@
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
   import {onMount} from 'svelte'
+  import {t} from '$lib/i18n/index.js'
 
   import Icon from '@iconify/svelte'
 
@@ -265,7 +266,7 @@
       entries = Array.isArray(result?.entries) ? result.entries : []
     } catch (err) {
       loadError = err
-      toastError('Load files failed', err?.message ?? 'Unknown error')
+      toastError($t('fileBrowser.toasts.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     } finally {
       loading = false
     }
@@ -299,10 +300,10 @@
     if (!sessionID || !item || item.isDir) return
     try {
       await startDownload(sessionID, item.path)
-      success('Download started', item.name)
+      success($t('fileBrowser.toasts.downloadStartedTitle'), item.name)
     } catch (err) {
       if (String(err?.message ?? '').toLowerCase().includes('canceled')) return
-      toastError('Download failed', err?.message ?? 'Unknown error')
+      toastError($t('fileBrowser.toasts.downloadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 
@@ -326,10 +327,10 @@
     confirmOpen = false
     try {
       await deleteRemotePath(sessionID, item.path, item.isDir)
-      success('Deleted', item.name)
+      success($t('fileBrowser.toasts.deletedTitle'), item.name)
       await load(currentPath)
     } catch (err) {
-      toastError('Delete failed', err?.message ?? 'Unknown error')
+      toastError($t('fileBrowser.toasts.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     } finally {
       deletingPath = ''
       confirmTarget = null
@@ -342,9 +343,9 @@
       const paths = await pickUploadFiles()
       if (!paths || paths.length === 0) return
       await startUpload(sessionID, paths, currentPath)
-      success('Upload started', `${paths.length} item(s)`) 
+      success($t('fileBrowser.toasts.uploadStartedTitle'), $t('fileBrowser.toasts.uploadStartedMessage', {count: paths.length}))
     } catch (err) {
-      toastError('Upload failed', err?.message ?? 'Unknown error')
+      toastError($t('fileBrowser.toasts.uploadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 
@@ -361,15 +362,15 @@
     <button
       type="button"
       class="absolute inset-0 bg-background/70 backdrop-blur-sm"
-      aria-label="Close"
+      aria-label={$t('common.close')}
       on:click={cancelRemove}
     ></button>
 
     <Card className="relative w-full max-w-md">
       <CardHeader className="space-y-1 text-left">
-        <CardTitle className="text-base">确认删除</CardTitle>
+        <CardTitle className="text-base">{$t('fileBrowser.confirmDeleteTitle')}</CardTitle>
         <CardDescription>
-          {confirmTarget.isDir ? '删除文件夹将递归删除其中所有内容。' : '删除文件将无法恢复。'}
+          {confirmTarget.isDir ? $t('fileBrowser.confirmDeleteWarningDir') : $t('fileBrowser.confirmDeleteWarningFile')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -378,10 +379,10 @@
         </div>
         <div class="flex items-center justify-end gap-2">
           <Button variant="secondary" on:click={cancelRemove} disabled={deletingPath === confirmTarget.path}>
-            取消
+            {$t('common.cancel')}
           </Button>
           <Button variant="destructive" on:click={confirmRemove} disabled={deletingPath === confirmTarget.path}>
-            删除
+            {$t('common.delete')}
           </Button>
         </div>
       </CardContent>
@@ -393,12 +394,12 @@
   <div class="flex-1 min-h-0 flex flex-col gap-4">
   <header class="flex items-center justify-between gap-4">
     <div class="min-w-0 text-left">
-      <div class="text-xl font-semibold tracking-tight">FileBrowser</div>
+      <div class="text-xl font-semibold tracking-tight">{$t('fileBrowser.title')}</div>
       <div class="text-sm text-muted-foreground">
         {#if sessionID}
-          From Connection：{sessionDisplayName}
+          {$t('fileBrowser.fromConnection', {name: sessionDisplayName})}
         {:else}
-          Please select a connection to browse files.
+          {$t('fileBrowser.selectConnectionHint')}
         {/if}
       </div>
     </div>
@@ -411,14 +412,14 @@
           on:click={goUp}
           disabled={loading || currentPath === '' || currentPath === '.' || currentPath === '/'}
         >
-          Up
+          {$t('fileBrowser.up')}
         </Button>
-        <Button size="sm" variant="outline" on:click={() => load(currentPath)} disabled={loading}>Refresh</Button>
-        <Button size="sm" on:click={uploadViaDialog} disabled={loading}>Upload</Button>
+        <Button size="sm" variant="outline" on:click={() => load(currentPath)} disabled={loading}>{$t('common.refresh')}</Button>
+        <Button size="sm" on:click={uploadViaDialog} disabled={loading}>{$t('fileBrowser.upload')}</Button>
       {/if}
       {#if sessionID}
-        <Button variant="outline" size="sm" on:click={onOpenTransfers}>传输</Button>
-        <Button variant="secondary" size="sm" on:click={() => onDisconnect(sessionID)}>断开</Button>
+        <Button variant="outline" size="sm" on:click={onOpenTransfers}>{$t('fileBrowser.transfers')}</Button>
+        <Button variant="secondary" size="sm" on:click={() => onDisconnect(sessionID)}>{$t('fileBrowser.disconnect')}</Button>
       {/if}
     </div>
   </header>
@@ -426,16 +427,16 @@
   {#if !sessionID}
     <Card className="flex-1 min-h-0 flex flex-col">
       <CardHeader className="space-y-1 text-left">
-        <CardTitle className="text-base">No active session</CardTitle>
-        <CardDescription>Connect to a server to browse files.</CardDescription>
+        <CardTitle className="text-base">{$t('fileBrowser.noActiveSessionTitle')}</CardTitle>
+        <CardDescription>{$t('fileBrowser.noActiveSessionDescription')}</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 min-h-0"></CardContent>
     </Card>
   {:else if !connected}
     <Card className="flex-1 min-h-0 flex flex-col">
       <CardHeader className="space-y-1 text-left">
-        <CardTitle className="text-base">连接中</CardTitle>
-        <CardDescription>{session?.message || 'Please wait...'}</CardDescription>
+        <CardTitle className="text-base">{$t('fileBrowser.connectingTitle')}</CardTitle>
+        <CardDescription>{session?.message || $t('fileBrowser.pleaseWait')}</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 min-h-0"></CardContent>
     </Card>
@@ -470,7 +471,7 @@
           {#if loadError}
             <div class="p-4">
               <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-left">
-                {loadError.message ?? 'Load failed'}
+                {loadError.message ?? $t('fileBrowser.toasts.loadFailedTitle')}
               </div>
             </div>
           {/if}
@@ -479,9 +480,9 @@
             <table class="w-full text-left text-sm">
               <thead class="sticky top-0 bg-card">
                 <tr class="border-b border-border">
-                  <th class="px-4 py-2.5 font-medium">Name</th>
-                  <th class="px-4 py-2.5 font-medium w-[140px]">Size</th>
-                  <th class="px-4 py-2.5 font-medium w-[200px]">Modified</th>
+                  <th class="px-4 py-2.5 font-medium">{$t('fileBrowser.table.name')}</th>
+                  <th class="px-4 py-2.5 font-medium w-[140px]">{$t('fileBrowser.table.size')}</th>
+                  <th class="px-4 py-2.5 font-medium w-[200px]">{$t('fileBrowser.table.modified')}</th>
                   <th class="px-4 py-2.5 font-medium w-[120px]"></th>
                 </tr>
               </thead>
@@ -526,7 +527,7 @@
                                 }}
                               >
                                 <Icon icon={mdiDownload} width={16} height={16} class="shrink-0 opacity-80" />
-                                <span>Download</span>
+                                <span>{$t('fileBrowser.menu.download')}</span>
                               </button>
                             {/if}
                             <button
@@ -535,7 +536,7 @@
                               on:click={() => requestRemove(item)}
                             >
                               <Icon icon={mdiDeleteOutline} width={16} height={16} class="shrink-0 opacity-90" />
-                              <span>Delete</span>
+                              <span>{$t('fileBrowser.menu.delete')}</span>
                             </button>
                           </div>
                         {/if}
@@ -545,7 +546,7 @@
                 {/each}
                 {#if entries.length === 0 && !loading}
                   <tr>
-                    <td class="px-4 py-6 text-sm text-muted-foreground" colspan="4">Empty</td>
+                    <td class="px-4 py-6 text-sm text-muted-foreground" colspan="4">{$t('common.empty')}</td>
                   </tr>
                 {/if}
               </tbody>

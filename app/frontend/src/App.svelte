@@ -18,6 +18,7 @@
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
   import {Input} from '$lib/components/ui/input/index.js'
+  import {t} from '$lib/i18n/index.js'
 
   const unsubscribe = sessionsStore.startListener()
   onDestroy(() => {
@@ -135,17 +136,17 @@
     <div class="fixed inset-0 z-[100] bg-background/60 backdrop-blur-sm flex items-center justify-center p-6">
       <Card className="w-[520px]">
         <CardHeader className="text-left">
-          <CardTitle>已锁定</CardTitle>
-          <CardDescription>请输入解锁密码继续使用。</CardDescription>
+          <CardTitle>{$t('security.lockedTitle')}</CardTitle>
+          <CardDescription>{$t('security.lockedDescription')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <form class="space-y-3" on:submit|preventDefault={unlock}>
-            <Input type="password" bind:value={unlockPassword} placeholder="Master password" />
-            <Button className="w-full" type="submit">解锁</Button>
+            <Input type="password" bind:value={unlockPassword} placeholder={$t('security.masterPasswordPlaceholder')} />
+            <Button className="w-full" type="submit">{$t('security.unlock')}</Button>
           </form>
           {#if unlockError}
             <div class="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-left">
-              {unlockError.message ?? 'Unlock failed'}
+              {unlockError.message ?? $t('security.unlockFailed')}
             </div>
           {/if}
         </CardContent>

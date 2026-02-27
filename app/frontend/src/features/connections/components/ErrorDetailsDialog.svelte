@@ -1,15 +1,17 @@
 <script>
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
+  import {t} from '$lib/i18n/index.js'
 
   export let open = false
-  export let title = 'Error details'
+  export let title = ''
   export let error = null
   export let onClose = () => {}
   export let onRetry = null
 
   let copied = false
 
+  $: resolvedTitle = title || $t('common.details')
   $: text = formatErrorText(error)
 
   function formatErrorText(err) {
@@ -40,19 +42,19 @@
     <button
       type="button"
       class="absolute inset-0 bg-background/70 backdrop-blur-sm"
-      aria-label="Close"
+      aria-label={$t('common.close')}
       on:click={onClose}
     ></button>
 
     <Card className="relative w-full max-w-2xl">
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle className="text-base">{resolvedTitle}</CardTitle>
         <div class="flex items-center gap-2">
           {#if onRetry}
-            <Button size="sm" variant="secondary" on:click={onRetry}>Retry</Button>
+            <Button size="sm" variant="secondary" on:click={onRetry}>{$t('common.retry')}</Button>
           {/if}
-          <Button size="sm" variant="outline" on:click={copy} disabled={!text}>{copied ? 'Copied' : 'Copy'}</Button>
-          <Button size="sm" variant="ghost" on:click={onClose}>Close</Button>
+          <Button size="sm" variant="outline" on:click={copy} disabled={!text}>{copied ? $t('common.copied') : $t('common.copy')}</Button>
+          <Button size="sm" variant="ghost" on:click={onClose}>{$t('common.close')}</Button>
         </div>
       </CardHeader>
       <CardContent>

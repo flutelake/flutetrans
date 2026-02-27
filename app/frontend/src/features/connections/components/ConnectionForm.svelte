@@ -6,6 +6,7 @@
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
   import {Separator} from '$lib/components/ui/separator/index.js'
   import TestConnectionButton from './TestConnectionButton.svelte'
+  import {t} from '$lib/i18n/index.js'
 
   const MASK = '********'
 
@@ -89,15 +90,9 @@
   }
 
   function labelForKey(key) {
-    switch (key) {
-      case 'username': return 'Username'
-      case 'password': return 'Password'
-      case 'privateKeyPath': return 'Private key path'
-      case 'passphrase': return 'Passphrase'
-      case 'accessKeyId': return 'Access key ID'
-      case 'secretAccessKey': return 'Secret access key'
-      default: return key
-    }
+    const k = `connections.form.fields.${String(key ?? '')}`
+    const label = $t(k)
+    return label === k ? String(key ?? '') : label
   }
 
   function markTouched(key) {
@@ -152,7 +147,6 @@
   }
 
   function submit() {
-    console.log("click save btn")
     onSave(buildPayload())
   }
 
@@ -196,26 +190,26 @@
 <Card className="h-full flex flex-col">
   <CardHeader className="flex-row items-start justify-between space-y-0">
     <div class="space-y-1 text-left">
-      <CardTitle className="text-base">{mode === 'new' ? 'New connection' : 'Edit connection'}</CardTitle>
-      <CardDescription>Protocol-specific fields update automatically.</CardDescription>
+      <CardTitle className="text-base">{mode === 'new' ? $t('connections.form.titleNew') : $t('connections.form.titleEdit')}</CardTitle>
+      <CardDescription>{$t('connections.form.description')}</CardDescription>
     </div>
 
     <div class="flex items-center gap-2">
       <TestConnectionButton getProfile={buildPayload} disabled={saving} />
-      <Button variant="secondary" size="sm" on:click={onCancel} disabled={saving}>Cancel</Button>
-      <Button size="sm" on:click={submit} disabled={saving}>Save</Button>
+      <Button variant="secondary" size="sm" on:click={onCancel} disabled={saving}>{$t('common.cancel')}</Button>
+      <Button size="sm" on:click={submit} disabled={saving}>{$t('common.save')}</Button>
     </div>
   </CardHeader>
 
   <CardContent className="flex-1 min-h-0 space-y-6">
     <div class="grid grid-cols-2 gap-4">
       <div class="space-y-2 text-left">
-        <Label>Name</Label>
-        <Input bind:value={name} placeholder="My server" />
+        <Label>{$t('connections.form.fields.name')}</Label>
+        <Input bind:value={name} placeholder={$t('connections.form.placeholders.name')} />
       </div>
 
       <div class="space-y-2 text-left">
-        <Label>Protocol</Label>
+        <Label>{$t('connections.form.fields.protocol')}</Label>
         <Select bind:value={protocol}>
           <option value="ftp">FTP</option>
           <option value="sftp">SFTP</option>
@@ -227,26 +221,26 @@
       </div>
 
       <div class="space-y-2 text-left">
-        <Label>Host / Endpoint / URL</Label>
+        <Label>{$t('connections.form.fields.host')}</Label>
         <Input bind:value={host} placeholder={protocol === 's3' ? 'https://s3.amazonaws.com' : 'example.com'} />
       </div>
 
       <div class="space-y-2 text-left">
-        <Label>Port (empty = default)</Label>
+        <Label>{$t('connections.form.fields.port')}</Label>
         <Input type="number" bind:value={port} min="0" max="65535" placeholder="0" />
       </div>
 
       <div class="space-y-2 text-left">
-        <Label>Path / Bucket / Share</Label>
+        <Label>{$t('connections.form.fields.path')}</Label>
         <Input bind:value={path} placeholder={protocol === 's3' ? 'bucket-name' : '/'} />
       </div>
 
       {#if protocol === 'sftp'}
         <div class="space-y-2 text-left">
-          <Label>Auth type</Label>
+          <Label>{$t('connections.form.fields.authType')}</Label>
           <Select bind:value={authType}>
-            <option value="password">Password</option>
-            <option value="key">Private key</option>
+            <option value="password">{$t('connections.form.authOptions.password')}</option>
+            <option value="key">{$t('connections.form.authOptions.key')}</option>
           </Select>
         </div>
       {/if}
@@ -255,7 +249,7 @@
     {#if visibleMetadataKeys(protocol).length > 0}
       <div class="space-y-3">
         <Separator />
-        <div class="text-left text-sm font-medium">Metadata</div>
+        <div class="text-left text-sm font-medium">{$t('connections.form.fields.metadata')}</div>
         <div class="grid grid-cols-2 gap-4">
           {#each visibleMetadataKeys(protocol) as key (key)}
             <div class="space-y-2 text-left">
@@ -273,7 +267,7 @@
     {#if visibleCredentialKeys(protocol, authType).length > 0}
       <div class="space-y-3">
         <Separator />
-        <div class="text-left text-sm font-medium">Credentials</div>
+        <div class="text-left text-sm font-medium">{$t('connections.form.fields.credentials')}</div>
         <div class="grid grid-cols-2 gap-4">
           {#each visibleCredentialKeys(protocol, authType) as key (key)}
             <div class="space-y-2 text-left">

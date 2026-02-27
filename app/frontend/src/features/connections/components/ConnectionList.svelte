@@ -3,6 +3,7 @@
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
   import {onMount} from 'svelte'
+  import {t} from '$lib/i18n/index.js'
 
   export let items = []
   export let selectedId = null
@@ -52,16 +53,16 @@
 <Card className="h-full flex flex-col">
   <CardHeader className="flex-row items-center justify-between space-y-0">
     <div class="space-y-1 text-left">
-      <CardTitle className="text-base">Connections</CardTitle>
-      <CardDescription>Saved connection profiles.</CardDescription>
+      <CardTitle className="text-base">{$t('connections.list.title')}</CardTitle>
+      <CardDescription>{$t('connections.list.description')}</CardDescription>
     </div>
   </CardHeader>
 
   <CardContent className="flex-1 min-h-0">
     {#if items.length === 0}
       <div class="rounded-md border border-dashed border-border p-6 text-left">
-        <div class="text-sm font-medium">No connections</div>
-        <div class="mt-1 text-sm text-muted-foreground">Create your first connection to get started.</div>
+        <div class="text-sm font-medium">{$t('connections.list.emptyTitle')}</div>
+        <div class="mt-1 text-sm text-muted-foreground">{$t('connections.list.emptyDescription')}</div>
       </div>
     {:else}
       <div class="h-full min-h-0 overflow-auto pr-1">
@@ -87,7 +88,7 @@
             </button>
 
             <div class="flex items-center gap-2">
-              <Button variant="outline" size="sm" on:click={() => onConnect(item.id)}>Connect</Button>
+              <Button variant="outline" size="sm" on:click={() => onConnect(item.id)}>{$t('common.connect')}</Button>
               <div class="relative" data-conn-actions>
                 <Button
                   variant="ghost"
@@ -119,7 +120,7 @@
                         <path d="M12 20h9" />
                         <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                       </svg>
-                      <span>编辑</span>
+                      <span>{$t('common.edit')}</span>
                     </button>
                     <button
                       type="button"
@@ -142,7 +143,7 @@
                         <path d="M10 11v6" />
                         <path d="M14 11v6" />
                       </svg>
-                      <span>删除</span>
+                      <span>{$t('common.delete')}</span>
                     </button>
                   </div>
                 {/if}
