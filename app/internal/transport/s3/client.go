@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +61,29 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 	if u, err := url.Parse(endpoint); err == nil && u.Scheme != "" {
 		secure = strings.EqualFold(u.Scheme, "https")
 		if u.Host != "" {
-			hostPort = u.Host
+			host := strings.TrimSpace(u.Hostname())
+			if host == "" {
+				return nil, transport.ValidationError(errors.New("invalid endpoint host"))
+			}
+			port := 0
+			if portStr := strings.TrimSpace(u.Port()); portStr != "" {
+				p, err := strconv.Atoi(portStr)
+				if err != nil || p <= 0 || p > 65535 {
+					return nil, transport.ValidationError(errors.New("invalid endpoint port"))
+				}
+				port = p
+			} else if profile.Port != 0 {
+				port = profile.Port
+			} else if secure {
+				port = 443
+			} else {
+				port = 80
+			}
+
+			hostPort = host
+			if port != 0 {
+				hostPort = net.JoinHostPort(host, strconv.Itoa(port))
+			}
 		}
 	}
 
@@ -74,7 +97,14 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 			return nil, transport.ValidationError(errors.New("invalid endpoint port"))
 		}
 	} else {
-		if secure {
+		host = strings.TrimSpace(hostPort)
+		if host == "" {
+			return nil, transport.ValidationError(errors.New("invalid endpoint host"))
+		}
+		if profile.Port != 0 {
+			port = profile.Port
+			hostPort = net.JoinHostPort(host, strconv.Itoa(port))
+		} else if secure {
 			port = 443
 		} else {
 			port = 80
@@ -180,6 +210,27 @@ func (a *Adapter) List(ctx context.Context, clientAny any, listPath string) (mod
 	if !ok || client == nil {
 		return models.ListFilesResult{}, transport.ProtocolError(errors.New("invalid s3 client"))
 	}
+	cleanPath := strings.TrimSpace(listPath)
+	if cleanPath == "" || cleanPath == "." || cleanPath == "/" {
+		buckets, err := client.ListBuckets(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return models.ListFilesResult{}, transport.TimeoutError(ctx.Err())
+			}
+			return models.ListFilesResult{}, classifyS3RequestError(err)
+		}
+		entries := make([]models.FileEntry, 0, len(buckets))
+		for _, b := range buckets {
+			entries = append(entries, models.FileEntry{
+				Name:       b.Name,
+				Path:       b.Name,
+				IsDir:      true,
+				Size:       0,
+				ModifiedAt: b.CreationDate.UnixMilli(),
+			})
+		}
+		return models.ListFilesResult{Path: ".", Entries: entries}, nil
+	}
 	bucket, keyPrefix := parseS3BucketAndKey(listPath)
 	if bucket == "" {
 		return models.ListFilesResult{}, transport.ValidationError(errors.New("bucket required"))
@@ -243,7 +294,37 @@ func (a *Adapter) List(ctx context.Context, clientAny any, listPath string) (mod
 	return models.ListFilesResult{Path: resolved, Entries: entries}, nil
 }
 
-func (a *Adapter) MkdirAll(_ context.Context, _ any, _ string) error {
+func (a *Adapter) MkdirAll(ctx context.Context, clientAny any, dirPath string) error {
+	client, ok := clientAny.(*minio.Client)
+	if !ok || client == nil {
+		return transport.ProtocolError(errors.New("invalid s3 client"))
+	}
+	dirPath = strings.TrimSpace(dirPath)
+	if dirPath == "" || dirPath == "." || dirPath == "/" {
+		return nil
+	}
+	bucket, _ := parseS3BucketAndKey(dirPath)
+	if bucket == "" {
+		return transport.ValidationError(errors.New("invalid s3 path"))
+	}
+
+	exists, err := client.BucketExists(ctx, bucket)
+	if err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return classifyS3RequestError(err)
+	}
+	if exists {
+		return nil
+	}
+
+	if err := client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
+		if ctx.Err() != nil {
+			return transport.TimeoutError(ctx.Err())
+		}
+		return classifyS3RequestError(err)
+	}
 	return nil
 }
 
@@ -363,8 +444,45 @@ func (a *Adapter) Remove(ctx context.Context, clientAny any, remotePath string, 
 	}
 
 	bucket, key := parseS3BucketAndKey(remotePath)
-	if bucket == "" || strings.TrimSpace(key) == "" {
+	if bucket == "" {
 		return transport.ValidationError(errors.New("invalid s3 path"))
+	}
+	if strings.TrimSpace(key) == "" {
+		if !recursive {
+			if err := client.RemoveBucket(ctx, bucket); err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return classifyS3RequestError(err)
+			}
+			return nil
+		}
+
+		for obj := range client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: "", Recursive: true}) {
+			if obj.Err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return classifyS3RequestError(obj.Err)
+			}
+			if err := client.RemoveObject(ctx, bucket, obj.Key, minio.RemoveObjectOptions{}); err != nil {
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return classifyS3RequestError(err)
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+		}
+
+		if err := client.RemoveBucket(ctx, bucket); err != nil {
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return classifyS3RequestError(err)
+		}
+		return nil
 	}
 
 	if !recursive {

@@ -131,7 +131,6 @@ export const messages = {
       connectingTitle: 'Connecting',
       pleaseWait: 'Please wait…',
       up: 'Up',
-      transfers: 'Transfers',
       disconnect: 'Disconnect',
       upload: 'Upload',
       table: {
@@ -316,7 +315,6 @@ export const messages = {
       connectingTitle: '连接中',
       pleaseWait: '请稍候…',
       up: '上一级',
-      transfers: '传输',
       disconnect: '断开',
       upload: '上传',
       table: {

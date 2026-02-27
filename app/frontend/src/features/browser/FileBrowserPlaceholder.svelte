@@ -66,8 +66,10 @@
 
   $: sessionID = session?.sessionID
   $: connected = session?.status === 'connected'
+  $: protocol = String(session?.protocol ?? '')
   $: profileName = session?.profileName || session?.connectionName || session?.name
   $: sessionDisplayName = profileName || (sessionID ? sessionID.slice(0, 8) : '')
+  $: isS3BucketListView = protocol === 's3' && (currentPath === '' || currentPath === '.' || currentPath === '/')
 
   function formatSize(bytes) {
     const n = Number(bytes ?? 0)
@@ -342,7 +344,7 @@
   }
 
   async function uploadViaDialog() {
-    if (!sessionID) return
+    if (!sessionID || isS3BucketListView) return
     try {
       const paths = await pickUploadFiles()
       if (!paths || paths.length === 0) return
@@ -419,10 +421,9 @@
           {$t('fileBrowser.up')}
         </Button>
         <Button size="sm" variant="outline" on:click={() => load(currentPath)} disabled={loading}>{$t('common.refresh')}</Button>
-        <Button size="sm" on:click={uploadViaDialog} disabled={loading}>{$t('fileBrowser.upload')}</Button>
+        <Button size="sm" on:click={uploadViaDialog} disabled={loading || isS3BucketListView}>{$t('fileBrowser.upload')}</Button>
       {/if}
       {#if sessionID}
-        <Button variant="outline" size="sm" on:click={onOpenTransfers}>{$t('fileBrowser.transfers')}</Button>
         <Button variant="secondary" size="sm" on:click={() => onDisconnect(sessionID)}>{$t('fileBrowser.disconnect')}</Button>
       {/if}
     </div>
