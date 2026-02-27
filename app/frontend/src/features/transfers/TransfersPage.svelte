@@ -7,7 +7,7 @@
   import mdiDownload from '@iconify-icons/mdi/download'
   import mdiUpload from '@iconify-icons/mdi/upload'
 
-  import {error as toastError} from '../connections/ui/feedback.js'
+  import toast from 'svelte-french-toast'
   import {transfersStore} from './state/transfersStore.js'
   import {t} from '$lib/i18n/index.js'
 
@@ -67,7 +67,7 @@
   onMount(() => {
     stopListener = transfersStore.startListener()
     transfersStore.refresh().catch(err => {
-      toastError($t('transfers.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error([$t('transfers.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')].filter(Boolean).join('\n'), {duration: 5000})
     })
     return () => {
       stopListener?.()

@@ -10,7 +10,7 @@
     initializeMasterPassword,
     saveConnection
   } from '../../lib/wails/connectionService.js'
-  import {error as toastError, success} from './ui/feedback.js'
+  import toast from 'svelte-french-toast'
 
   import {Button} from '$lib/components/ui/button/index.js'
   import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '$lib/components/ui/card/index.js'
@@ -32,6 +32,18 @@
   let setupConfirm = ''
   let setupError = null
   let actionError = null
+
+  function toastText(title, message) {
+    return [title, message].filter(v => v != null && String(v).trim() !== '').join('\n')
+  }
+
+  function notifySuccess(title, message) {
+    toast.success(toastText(title, message), {duration: 3000})
+  }
+
+  function notifyError(title, message) {
+    toast.error(toastText(title, message), {duration: 5000})
+  }
 
   async function setupMasterPassword() {
     setupError = null
@@ -56,10 +68,10 @@
       await initializeMasterPassword(password)
       await onSecurityChanged()
       await refreshConnections()
-      success($t('connections.toasts.masterPasswordSetTitle'), $t('connections.toasts.masterPasswordSetMessage'))
+      notifySuccess($t('connections.toasts.masterPasswordSetTitle'), $t('connections.toasts.masterPasswordSetMessage'))
     } catch (err) {
       setupError = err
-      toastError($t('security.setup.errors.failed'), err?.message ?? $t('connections.errors.unknownError'))
+      notifyError($t('security.setup.errors.failed'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 
@@ -85,7 +97,7 @@
       formProfile = await getConnection(id)
     } catch (err) {
       actionError = err
-      toastError('Load failed', err?.message ?? 'Unknown error')
+      notifyError('Load failed', err?.message ?? 'Unknown error')
       closeForm()
     }
   }
@@ -107,10 +119,10 @@
         closeForm()
       }
       await refreshConnections()
-      success($t('connections.toasts.deletedTitle'), $t('connections.toasts.deletedMessage'))
+      notifySuccess($t('connections.toasts.deletedTitle'), $t('connections.toasts.deletedMessage'))
     } catch (err) {
       actionError = err
-      toastError($t('connections.errors.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      notifyError($t('connections.errors.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 
@@ -125,10 +137,10 @@
         protocol: profile?.protocol ?? ''
       })
       onConnected(sessionID)
-      success($t('connections.toasts.connectingTitle'), $t('connections.toasts.connectingMessage', {session: sessionID.slice(0, 8)}))
+      notifySuccess($t('connections.toasts.connectingTitle'), $t('connections.toasts.connectingMessage', {session: sessionID.slice(0, 8)}))
     } catch (err) {
       actionError = err
-      toastError($t('connections.errors.connectFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      notifyError($t('connections.errors.connectFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 
@@ -140,10 +152,10 @@
       selectedId = saved.id
       await refreshConnections()
       closeForm()
-      success($t('connections.toasts.savedTitle'), $t('connections.toasts.savedMessage'))
+      notifySuccess($t('connections.toasts.savedTitle'), $t('connections.toasts.savedMessage'))
     } catch (err) {
       actionError = err
-      toastError($t('connections.errors.saveFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      notifyError($t('connections.errors.saveFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     } finally {
       saving = false
     }
@@ -170,10 +182,10 @@
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-      success($t('connections.actions.exportSuccessTitle'), $t('connections.actions.exportSuccessMessage'))
+      notifySuccess($t('connections.actions.exportSuccessTitle'), $t('connections.actions.exportSuccessMessage'))
     } catch (err) {
       actionError = err
-      toastError($t('connections.errors.exportFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      notifyError($t('connections.errors.exportFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
     }
   }
 

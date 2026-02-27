@@ -19,7 +19,7 @@
   import mdiDownload from '@iconify-icons/mdi/download'
   import mdiDeleteOutline from '@iconify-icons/mdi/delete-outline'
 
-  import {error as toastError, success} from '../connections/ui/feedback.js'
+  import toast from 'svelte-french-toast'
   import {deleteRemotePath, listFiles, pickUploadFiles, startDownload, startUpload} from '../../lib/wails/connectionService.js'
 
   export let session
@@ -34,6 +34,10 @@
   let openMenuFor = ''
   let confirmOpen = false
   let confirmTarget = null
+
+  function toastText(title, message) {
+    return [title, message].filter(v => v != null && String(v).trim() !== '').join('\n')
+  }
 
   function toggleMenu(path) {
     openMenuFor = openMenuFor === path ? '' : path
@@ -266,7 +270,7 @@
       entries = Array.isArray(result?.entries) ? result.entries : []
     } catch (err) {
       loadError = err
-      toastError($t('fileBrowser.toasts.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error(toastText($t('fileBrowser.toasts.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
     } finally {
       loading = false
     }
@@ -300,10 +304,10 @@
     if (!sessionID || !item || item.isDir) return
     try {
       await startDownload(sessionID, item.path)
-      success($t('fileBrowser.toasts.downloadStartedTitle'), item.name)
+      toast.success(toastText($t('fileBrowser.toasts.downloadStartedTitle'), item.name), {duration: 3000})
     } catch (err) {
       if (String(err?.message ?? '').toLowerCase().includes('canceled')) return
-      toastError($t('fileBrowser.toasts.downloadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error(toastText($t('fileBrowser.toasts.downloadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
     }
   }
 
@@ -327,10 +331,10 @@
     confirmOpen = false
     try {
       await deleteRemotePath(sessionID, item.path, item.isDir)
-      success($t('fileBrowser.toasts.deletedTitle'), item.name)
+      toast.success(toastText($t('fileBrowser.toasts.deletedTitle'), item.name), {duration: 3000})
       await load(currentPath)
     } catch (err) {
-      toastError($t('fileBrowser.toasts.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error(toastText($t('fileBrowser.toasts.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
     } finally {
       deletingPath = ''
       confirmTarget = null
@@ -343,9 +347,9 @@
       const paths = await pickUploadFiles()
       if (!paths || paths.length === 0) return
       await startUpload(sessionID, paths, currentPath)
-      success($t('fileBrowser.toasts.uploadStartedTitle'), $t('fileBrowser.toasts.uploadStartedMessage', {count: paths.length}))
+      toast.success(toastText($t('fileBrowser.toasts.uploadStartedTitle'), $t('fileBrowser.toasts.uploadStartedMessage', {count: paths.length})), {duration: 3000})
     } catch (err) {
-      toastError($t('fileBrowser.toasts.uploadFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error(toastText($t('fileBrowser.toasts.uploadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
     }
   }
 

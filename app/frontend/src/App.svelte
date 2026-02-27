@@ -5,8 +5,8 @@
   import TransfersPage from './features/transfers/TransfersPage.svelte'
   import {connectionsStore, refreshConnections} from './features/connections/state/connectionsStore.js'
   import {sessionsStore} from './features/connections/state/sessionsStore.js'
-  import {toasts} from './features/connections/ui/feedback.js'
   import {onDestroy, onMount} from 'svelte'
+  import {Toaster} from 'svelte-french-toast'
 
   import {
     getMasterPasswordStatus,
@@ -93,7 +93,6 @@
 
   $: state = $sessionsStore
   $: currentSession = state.sessions.find(s => s.sessionID === state.current)
-  $: toastState = $toasts
   $: locked = !!(securityStatus?.hasEncryptedStore && !securityStatus?.unlocked)
   $: canLock = !!(securityStatus?.hasEncryptedStore && securityStatus?.unlocked)
 </script>
@@ -153,27 +152,5 @@
       </Card>
     </div>
   {/if}
-
-  {#if toastState.length > 0}
-    <div class="fixed right-4 top-4 z-50 flex w-80 flex-col gap-2">
-      {#each toastState as t (t.id)}
-        <div
-          class={
-            t.type === 'success'
-              ? 'rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-left text-sm'
-              : t.type === 'error'
-                ? 'rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-left text-sm'
-                : 'rounded-lg border border-border bg-card px-3 py-2 text-left text-sm'
-          }
-        >
-          {#if t.title}
-            <div class="font-medium">{t.title}</div>
-          {/if}
-          {#if t.message}
-            <div class="text-muted-foreground">{t.message}</div>
-          {/if}
-        </div>
-      {/each}
-    </div>
-  {/if}
+  <Toaster position="top-right" />
 </div>

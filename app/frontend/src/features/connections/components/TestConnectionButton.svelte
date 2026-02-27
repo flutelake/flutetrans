@@ -2,7 +2,7 @@
   import {Button} from '$lib/components/ui/button/index.js'
   import {testConnection} from '../../../lib/wails/connectionService.js'
   import ErrorDetailsDialog from './ErrorDetailsDialog.svelte'
-  import {error as toastError, success} from '../ui/feedback.js'
+  import toast from 'svelte-french-toast'
   import {t} from '$lib/i18n/index.js'
 
   export let getProfile = () => null
@@ -13,6 +13,10 @@
   let error = null
   let showDetails = false
   let runToken = 0
+
+  function toastText(title, message) {
+    return [title, message].filter(v => v != null && String(v).trim() !== '').join('\n')
+  }
 
   async function run() {
     error = null
@@ -25,14 +29,14 @@
       if (token !== runToken) return
       last = result
       if (result?.success) {
-        success($t('testConnection.toastSuccessTitle'), result?.latencyMs != null ? `${result.latencyMs}ms` : '')
+        toast.success(toastText($t('testConnection.toastSuccessTitle'), result?.latencyMs != null ? `${result.latencyMs}ms` : ''), {duration: 3000})
       } else {
-        toastError($t('testConnection.toastFailedTitle'), result?.message ?? $t('connections.errors.unknownError'))
+        toast.error(toastText($t('testConnection.toastFailedTitle'), result?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
       }
     } catch (err) {
       if (token !== runToken) return
       error = err
-      toastError($t('testConnection.toastFailedTitle'), err?.message ?? $t('connections.errors.unknownError'))
+      toast.error(toastText($t('testConnection.toastFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
     } finally {
       if (token === runToken) testing = false
     }
