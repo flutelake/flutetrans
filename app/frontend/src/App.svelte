@@ -29,6 +29,17 @@
   let securityStatus = null
   let unlockPassword = ''
   let unlockError = null
+  let unlockErrorMessage = ''
+
+  function resolveUnlockErrorMessage(err) {
+    if (!err) return ''
+    const code = err?.code
+    const message = String(err?.message ?? '')
+    if (code === 2002) return $t('security.errors.invalidMasterPassword')
+    if (code === 1001 && message === 'master password required') return $t('security.errors.required')
+    if (code === 1003 && message === 'invalid encrypted store') return $t('security.errors.invalidEncryptedStore')
+    return err?.message ?? $t('security.unlockFailed')
+  }
 
   async function loadSecurityStatus() {
     securityLoading = true
@@ -95,6 +106,7 @@
   $: currentSession = state.sessions.find(s => s.sessionID === state.current)
   $: locked = !!(securityStatus?.hasEncryptedStore && !securityStatus?.unlocked)
   $: canLock = !!(securityStatus?.hasEncryptedStore && securityStatus?.unlocked)
+  $: unlockErrorMessage = resolveUnlockErrorMessage(unlockError)
 </script>
 
 <div class="h-screen min-h-0 p-6 flex flex-col gap-4 overflow-hidden">
@@ -145,7 +157,7 @@
           </form>
           {#if unlockError}
             <div class="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-left">
-              {unlockError.message ?? $t('security.unlockFailed')}
+              {unlockErrorMessage}
             </div>
           {/if}
         </CardContent>

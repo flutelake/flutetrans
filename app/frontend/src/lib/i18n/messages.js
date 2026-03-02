@@ -40,6 +40,11 @@ export const messages = {
       masterPasswordPlaceholder: 'Master password',
       unlock: 'Unlock',
       unlockFailed: 'Unlock failed',
+      errors: {
+        required: 'Master password required',
+        invalidMasterPassword: 'Incorrect master password',
+        invalidEncryptedStore: 'Encrypted store is corrupted'
+      },
       setup: {
         title: 'Set master password',
         description: 'This password encrypts stored credentials on your device.',
@@ -229,6 +234,11 @@ export const messages = {
       masterPasswordPlaceholder: '主密码',
       unlock: '解锁',
       unlockFailed: '解锁失败',
+      errors: {
+        required: '需要主密码',
+        invalidMasterPassword: '主密码不正确',
+        invalidEncryptedStore: '加密存储已损坏'
+      },
       setup: {
         title: '设置主密码',
         description: '该密码会在本机加密保存的凭据。',

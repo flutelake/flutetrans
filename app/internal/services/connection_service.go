@@ -84,6 +84,24 @@ func (s *ConnectionService) SetMasterPassword(passphrase string) error {
 		}
 		s.store = store
 	}
+	has, err := s.store.HasEncryptedFile()
+	if err != nil {
+		s.secure.SetPassphrase("")
+		return storageError("failed to check encrypted store", map[string]any{"error": err.Error()})
+	}
+	if has {
+		_, err := s.store.Load()
+		if err != nil {
+			s.secure.SetPassphrase("")
+			if errors.Is(err, crypto.ErrDecryptFailed) {
+				return newServiceError(ErrCodeAuth, "invalid master password", nil)
+			}
+			if errors.Is(err, crypto.ErrInvalidEnvelope) {
+				return cryptoError("invalid encrypted store", nil)
+			}
+			return cryptoError("failed to decrypt encrypted store", map[string]any{"error": err.Error()})
+		}
+	}
 	return nil
 }
 
@@ -101,7 +119,16 @@ func (s *ConnectionService) GetMasterPasswordStatus() (MasterPasswordStatus, err
 		return MasterPasswordStatus{}, storageError("failed to check encrypted store", map[string]any{"error": err.Error()})
 	}
 
-	return MasterPasswordStatus{Unlocked: s.secure.IsUnlocked(), HasEncryptedStore: has}, nil
+	unlocked := s.secure.IsUnlocked()
+	if unlocked && has {
+		_, err := s.store.Load()
+		if err != nil {
+			s.secure.SetPassphrase("")
+			unlocked = false
+		}
+	}
+
+	return MasterPasswordStatus{Unlocked: unlocked, HasEncryptedStore: has}, nil
 }
 
 func (s *ConnectionService) InitializeMasterPassword(passphrase string) error {
