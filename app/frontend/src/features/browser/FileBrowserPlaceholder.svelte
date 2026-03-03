@@ -43,6 +43,14 @@
     return [title, message].filter(v => v != null && String(v).trim() !== '').join('\n')
   }
 
+  function errorText(err, fallback) {
+    const detailsError = err?.details?.error
+    if (detailsError != null && String(detailsError).trim() !== '') return String(detailsError)
+    const msg = err?.message
+    if (msg != null && String(msg).trim() !== '') return String(msg)
+    return fallback
+  }
+
   function toggleMenu(path) {
     openMenuFor = openMenuFor === path ? '' : path
   }
@@ -287,7 +295,7 @@
       entries = Array.isArray(result?.entries) ? result.entries : []
     } catch (err) {
       loadError = err
-      toast.error(toastText($t('fileBrowser.toasts.loadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+      toast.error(toastText($t('fileBrowser.toasts.loadFailedTitle'), errorText(err, $t('connections.errors.unknownError'))), {duration: 5000})
     } finally {
       loading = false
     }
@@ -324,7 +332,7 @@
       toast.success(toastText($t('fileBrowser.toasts.downloadStartedTitle'), item.name), {duration: 3000})
     } catch (err) {
       if (String(err?.message ?? '').toLowerCase().includes('canceled')) return
-      toast.error(toastText($t('fileBrowser.toasts.downloadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+      toast.error(toastText($t('fileBrowser.toasts.downloadFailedTitle'), errorText(err, $t('connections.errors.unknownError'))), {duration: 5000})
     }
   }
 
@@ -351,7 +359,7 @@
       toast.success(toastText($t('fileBrowser.toasts.deletedTitle'), item.name), {duration: 3000})
       await load(currentPath)
     } catch (err) {
-      toast.error(toastText($t('fileBrowser.toasts.deleteFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+      toast.error(toastText($t('fileBrowser.toasts.deleteFailedTitle'), errorText(err, $t('connections.errors.unknownError'))), {duration: 5000})
     } finally {
       deletingPath = ''
       confirmTarget = null
@@ -366,7 +374,7 @@
       await startUpload(sessionID, paths, currentPath)
       toast.success(toastText($t('fileBrowser.toasts.uploadStartedTitle'), $t('fileBrowser.toasts.uploadStartedMessage', {count: paths.length})), {duration: 3000})
     } catch (err) {
-      toast.error(toastText($t('fileBrowser.toasts.uploadFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+      toast.error(toastText($t('fileBrowser.toasts.uploadFailedTitle'), errorText(err, $t('connections.errors.unknownError'))), {duration: 5000})
     }
   }
 
@@ -400,7 +408,7 @@
       createDirName = ''
       await load(currentPath)
     } catch (err) {
-      toast.error(toastText($t('fileBrowser.toasts.dirCreateFailedTitle'), err?.message ?? $t('connections.errors.unknownError')), {duration: 5000})
+      toast.error(toastText($t('fileBrowser.toasts.dirCreateFailedTitle'), errorText(err, $t('connections.errors.unknownError'))), {duration: 5000})
     } finally {
       createDirWorking = false
     }

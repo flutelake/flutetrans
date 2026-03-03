@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/textproto"
 	"os"
 	"path"
 	"strings"
@@ -21,6 +22,45 @@ type Adapter struct{}
 
 func NewAdapter() *Adapter {
 	return &Adapter{}
+}
+
+func ftpCleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "."
+	}
+	clean := path.Clean(p)
+	if clean == "" {
+		return "."
+	}
+	return clean
+}
+
+func ftpPathCandidates(p string) []string {
+	clean := ftpCleanPath(p)
+	if clean == "." {
+		return []string{"."}
+	}
+	if clean == "/" {
+		return []string{"/", "."}
+	}
+	if strings.HasPrefix(clean, "/") {
+		rel := strings.TrimPrefix(clean, "/")
+		if rel == "" || rel == "." || rel == "/" {
+			return []string{clean, "."}
+		}
+		return []string{clean, rel}
+	}
+	return []string{clean}
+}
+
+func isFTPFileUnavailable(err error) bool {
+	var tperr *textproto.Error
+	if errors.As(err, &tperr) {
+		return tperr.Code == ftplib.StatusFileUnavailable
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "550")
 }
 
 func (a *Adapter) Test(ctx context.Context, profile models.ConnectionProfile) (time.Duration, error) {
@@ -98,11 +138,21 @@ func (a *Adapter) List(ctx context.Context, client any, listPath string) (models
 	if !ok || conn == nil {
 		return models.ListFilesResult{}, transport.ProtocolError(errors.New("invalid ftp client"))
 	}
-	if strings.TrimSpace(listPath) == "" {
-		listPath = "."
-	}
-	items, err := conn.List(listPath)
-	if err != nil {
+	var (
+		items    []*ftplib.Entry
+		err      error
+		usedPath string
+	)
+	candidates := ftpPathCandidates(listPath)
+	for i, candidate := range candidates {
+		items, err = conn.List(candidate)
+		if err == nil {
+			usedPath = candidate
+			break
+		}
+		if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+			continue
+		}
 		if ctx.Err() != nil {
 			return models.ListFilesResult{}, transport.TimeoutError(ctx.Err())
 		}
@@ -116,8 +166,8 @@ func (a *Adapter) List(ctx context.Context, client any, listPath string) (models
 		}
 		name := it.Name
 		p := name
-		if listPath != "." {
-			p = path.Join(listPath, name)
+		if usedPath != "." {
+			p = path.Join(usedPath, name)
 		}
 		entries = append(entries, models.FileEntry{
 			Name:       name,
@@ -127,7 +177,7 @@ func (a *Adapter) List(ctx context.Context, client any, listPath string) (models
 			ModifiedAt: it.Time.UnixMilli(),
 		})
 	}
-	return models.ListFilesResult{Path: listPath, Entries: entries}, nil
+	return models.ListFilesResult{Path: usedPath, Entries: entries}, nil
 }
 
 func (a *Adapter) MkdirAll(ctx context.Context, client any, dirPath string) error {
@@ -135,28 +185,96 @@ func (a *Adapter) MkdirAll(ctx context.Context, client any, dirPath string) erro
 	if !ok || conn == nil {
 		return transport.ProtocolError(errors.New("invalid ftp client"))
 	}
-	dirPath = strings.TrimSpace(dirPath)
-	if dirPath == "" || dirPath == "." {
-		return nil
+	restore := func() {}
+	if cwd, err := conn.CurrentDir(); err == nil && strings.TrimSpace(cwd) != "" {
+		restore = func() { _ = conn.ChangeDir(cwd) }
 	}
-	clean := path.Clean(dirPath)
-	parts := strings.Split(clean, "/")
-	current := ""
-	for _, part := range parts {
-		if part == "" || part == "." {
-			continue
+	defer restore()
+
+	candidates := ftpPathCandidates(dirPath)
+	for i, candidate := range candidates {
+		clean := ftpCleanPath(candidate)
+		if clean == "." || clean == "/" {
+			return nil
 		}
-		if current == "" {
-			current = part
+
+		isAbs := strings.HasPrefix(clean, "/")
+		if isAbs {
+			if err := conn.ChangeDir("/"); err != nil {
+				if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+					restore()
+					continue
+				}
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return transport.ProtocolError(err)
+			}
 		} else {
-			current = current + "/" + part
+			restore()
 		}
-		_ = conn.MakeDir(current)
-		if ctx.Err() != nil {
-			return transport.TimeoutError(ctx.Err())
+
+		parts := strings.Split(strings.TrimPrefix(clean, "/"), "/")
+		okPath := true
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" || part == "." {
+				continue
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			if err := conn.ChangeDir(part); err == nil {
+				continue
+			}
+
+			if err := conn.MakeDir(part); err != nil {
+				var tperr *textproto.Error
+				if errors.As(err, &tperr) {
+					msg := strings.ToLower(tperr.Msg)
+					if tperr.Code == ftplib.StatusFileUnavailable && (strings.Contains(msg, "exist") || strings.Contains(msg, "already")) {
+						goto ensureDir
+					}
+				} else {
+					msg := strings.ToLower(err.Error())
+					if strings.Contains(msg, "exist") || strings.Contains(msg, "already") {
+						goto ensureDir
+					}
+				}
+				if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+					okPath = false
+					break
+				}
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return transport.ProtocolError(err)
+			}
+
+		ensureDir:
+			if err := conn.ChangeDir(part); err != nil {
+				if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+					okPath = false
+					break
+				}
+				if ctx.Err() != nil {
+					return transport.TimeoutError(ctx.Err())
+				}
+				return transport.ProtocolError(err)
+			}
 		}
+
+		if okPath {
+			restore()
+			return nil
+		}
+		restore()
 	}
-	return nil
+
+	if ctx.Err() != nil {
+		return transport.TimeoutError(ctx.Err())
+	}
+	return transport.ProtocolError(errors.New("create directory failed"))
 }
 
 func (a *Adapter) Download(ctx context.Context, client any, remotePath string, localPath string, onProgress func(written int64, total int64)) error {
@@ -164,25 +282,38 @@ func (a *Adapter) Download(ctx context.Context, client any, remotePath string, l
 	if !ok || conn == nil {
 		return transport.ProtocolError(errors.New("invalid ftp client"))
 	}
-	remotePath = strings.TrimSpace(remotePath)
 	localPath = strings.TrimSpace(localPath)
-	if remotePath == "" || localPath == "" {
+	if strings.TrimSpace(remotePath) == "" || localPath == "" {
 		return transport.ValidationError(errors.New("paths required"))
 	}
 
-	var total int64
-	if sz, err := conn.FileSize(remotePath); err == nil {
-		total = int64(sz)
-	}
-
-	rc, err := conn.Retr(remotePath)
-	if err != nil {
+	var (
+		total int64
+		rc    io.ReadCloser
+		err   error
+	)
+	candidates := ftpPathCandidates(remotePath)
+	for i, candidate := range candidates {
+		if sz, szErr := conn.FileSize(candidate); szErr == nil {
+			total = int64(sz)
+		}
+		rc, err = conn.Retr(candidate)
+		if err == nil {
+			break
+		}
+		if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+			continue
+		}
 		if ctx.Err() != nil {
 			return transport.TimeoutError(ctx.Err())
 		}
 		return transport.ProtocolError(err)
 	}
-	defer rc.Close()
+	defer func() {
+		if rc != nil {
+			_ = rc.Close()
+		}
+	}()
 
 	dst, err := os.Create(localPath)
 	if err != nil {
@@ -240,9 +371,8 @@ func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remo
 	if !ok || conn == nil {
 		return transport.ProtocolError(errors.New("invalid ftp client"))
 	}
-	remotePath = strings.TrimSpace(remotePath)
 	localPath = strings.TrimSpace(localPath)
-	if remotePath == "" || localPath == "" {
+	if strings.TrimSpace(remotePath) == "" || localPath == "" {
 		return transport.ValidationError(errors.New("paths required"))
 	}
 
@@ -262,13 +392,32 @@ func (a *Adapter) Upload(ctx context.Context, client any, localPath string, remo
 		reader = &progressReader{r: src, total: total, cb: onProgress}
 	}
 
-	if err := conn.Stor(remotePath, reader); err != nil {
-		if ctx.Err() != nil {
-			return transport.TimeoutError(ctx.Err())
+	var lastErr error
+	candidates := ftpPathCandidates(remotePath)
+	for i, candidate := range candidates {
+		if err := conn.Stor(candidate, reader); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			if i+1 < len(candidates) && isFTPFileUnavailable(err) {
+				if _, seekErr := src.Seek(0, 0); seekErr == nil {
+					reader = io.Reader(src)
+					if onProgress != nil {
+						reader = &progressReader{r: src, total: total, cb: onProgress}
+					}
+				}
+				continue
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(err)
 		}
-		return transport.ProtocolError(err)
 	}
-	return nil
+	if ctx.Err() != nil {
+		return transport.TimeoutError(ctx.Err())
+	}
+	return transport.ProtocolError(lastErr)
 }
 
 func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, recursive bool) error {
@@ -276,22 +425,36 @@ func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, rec
 	if !ok || conn == nil {
 		return transport.ProtocolError(errors.New("invalid ftp client"))
 	}
-	remotePath = strings.TrimSpace(remotePath)
-	if remotePath == "" {
+	if strings.TrimSpace(remotePath) == "" {
 		return transport.ValidationError(errors.New("remotePath required"))
 	}
 
 	if !recursive {
-		if err := conn.Delete(remotePath); err == nil {
-			return nil
-		}
-		if err := conn.RemoveDir(remotePath); err == nil {
-			return nil
+		var lastErr error
+		candidates := ftpPathCandidates(remotePath)
+		for i, candidate := range candidates {
+			if err := conn.Delete(candidate); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
+			if err := conn.RemoveDir(candidate); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
+			if i+1 < len(candidates) && isFTPFileUnavailable(lastErr) {
+				continue
+			}
+			if ctx.Err() != nil {
+				return transport.TimeoutError(ctx.Err())
+			}
+			return transport.ProtocolError(errors.New("delete failed"))
 		}
 		if ctx.Err() != nil {
 			return transport.TimeoutError(ctx.Err())
 		}
-		return transport.ProtocolError(errors.New("delete failed"))
+		return transport.ProtocolError(lastErr)
 	}
 
 	var removeDirRecursive func(p string) error
@@ -337,11 +500,28 @@ func (a *Adapter) Remove(ctx context.Context, client any, remotePath string, rec
 		return nil
 	}
 
-	if err := conn.Delete(remotePath); err == nil {
-		return nil
+	var lastErr error
+	candidates := ftpPathCandidates(remotePath)
+	for i, candidate := range candidates {
+		if err := conn.Delete(candidate); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if err := conn.RemoveDir(candidate); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if err := removeDirRecursive(candidate); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if i+1 < len(candidates) && isFTPFileUnavailable(lastErr) {
+			continue
+		}
+		return lastErr
 	}
-	if err := conn.RemoveDir(remotePath); err == nil {
-		return nil
-	}
-	return removeDirRecursive(remotePath)
+	return lastErr
 }

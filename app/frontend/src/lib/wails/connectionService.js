@@ -12,9 +12,18 @@ function parseServiceError(err) {
   }
 
   if (typeof err === 'object') {
-    if (typeof err.message === 'string') {
-      return {message: err.message}
+    const message = typeof err.message === 'string' ? err.message : ''
+    if (message) {
+      try {
+        const parsed = JSON.parse(message)
+        if (parsed && typeof parsed === 'object') return parsed
+      } catch {
+      }
     }
+    if (typeof err.code === 'number' || (err.details && typeof err.details === 'object')) {
+      return err
+    }
+    if (message) return {message}
     return err
   }
 

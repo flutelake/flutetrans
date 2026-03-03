@@ -573,31 +573,50 @@ func (s *ConnectionService) StartUpload(sessionID string, localPaths []string, r
 		}
 		if !st.IsDir() {
 			remotePath := path.Join(baseRemote, filepath.Base(lp))
-			_ = ops.MkdirAll(context.Background(), session.Client, path.Dir(remotePath))
-			item, _ := s.transfers.StartUpload(session, ops, lp, remotePath)
+			mkdirCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			err = ops.MkdirAll(mkdirCtx, session.Client, path.Dir(remotePath))
+			cancel()
+			if err != nil {
+				return nil, s.mapTransportError(err)
+			}
+			item, startErr := s.transfers.StartUpload(session, ops, lp, remotePath)
+			if startErr != nil {
+				return nil, s.mapTransportError(startErr)
+			}
 			items = append(items, item)
 			continue
 		}
 
 		root := lp
-		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		err = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return nil
 			}
 			if d == nil || d.IsDir() {
 				return nil
 			}
-			rel, err := filepath.Rel(root, p)
-			if err != nil {
+			rel, relErr := filepath.Rel(root, p)
+			if relErr != nil {
 				return nil
 			}
 			rel = filepath.ToSlash(rel)
 			remotePath := path.Join(baseRemote, filepath.Base(root), rel)
-			_ = ops.MkdirAll(context.Background(), session.Client, path.Dir(remotePath))
-			item, _ := s.transfers.StartUpload(session, ops, p, remotePath)
+			mkdirCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			mkdirErr := ops.MkdirAll(mkdirCtx, session.Client, path.Dir(remotePath))
+			cancel()
+			if mkdirErr != nil {
+				return mkdirErr
+			}
+			item, startErr := s.transfers.StartUpload(session, ops, p, remotePath)
+			if startErr != nil {
+				return startErr
+			}
 			items = append(items, item)
 			return nil
 		})
+		if err != nil {
+			return nil, s.mapTransportError(err)
+		}
 	}
 
 	return items, nil
