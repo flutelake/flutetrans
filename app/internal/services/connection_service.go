@@ -381,9 +381,6 @@ func (s *ConnectionService) ListFiles(sessionID string, requestedPath string) (m
 
 	listPath := strings.TrimSpace(requestedPath)
 	if listPath == "" {
-		listPath = strings.TrimSpace(session.CurrentPath)
-	}
-	if listPath == "" {
 		listPath = "."
 	}
 

@@ -100,7 +100,7 @@ func (m *SessionManager) StartConnect(profile models.ConnectionProfile) string {
 		ProfileID:    profile.ID,
 		Protocol:     profile.Protocol,
 		Status:       models.StatusConnecting,
-		CurrentPath:  profile.Path,
+		CurrentPath:  func() string { if profile.Protocol == models.ProtocolNFS { return "." }; return profile.Path }(),
 		LastActivity: time.Now().UnixMilli(),
 		CancelFunc:   cancel,
 	}
