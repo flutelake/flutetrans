@@ -62,6 +62,29 @@
       .sort((a, b) => (Number(b.startedAt ?? 0) || 0) - (Number(a.startedAt ?? 0) || 0))
   }
 
+  function progressPercent(tr) {
+    const total = Number(tr?.bytesTotal ?? 0)
+    const done = Number(tr?.bytesTransferred ?? 0)
+    if (Number.isFinite(total) && total > 0 && Number.isFinite(done) && done >= 0) {
+      return Math.max(0, Math.min(100, Math.floor((done / total) * 100)))
+    }
+    if (tr?.status === 'completed') return 100
+    return 0
+  }
+
+  function progressClass(tr) {
+    if (tr?.status === 'failed' || (tr?.error != null && String(tr.error).trim() !== '')) return 'bg-destructive'
+    if (tr?.status === 'completed') return 'bg-emerald-500'
+    if (tr?.status === 'canceled') return 'bg-muted-foreground/60'
+    return 'bg-primary'
+  }
+
+  function statusClass(tr) {
+    if (tr?.status === 'failed') return 'text-destructive'
+    if (tr?.status === 'completed') return 'text-emerald-600'
+    return 'text-muted-foreground'
+  }
+
   let stopListener = () => {}
 
   onMount(() => {
@@ -139,7 +162,7 @@
               </div>
 
               <div class="flex items-center gap-2 shrink-0">
-                <div class="text-xs text-muted-foreground">{tr.status}</div>
+                <div class={`text-xs ${statusClass(tr)}`}>{tr.status}</div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -154,8 +177,8 @@
             <div class="mt-2">
               <div class="h-2 w-full rounded bg-muted">
                 <div
-                  class="h-2 rounded bg-emerald-500"
-                  style={`width: ${tr.bytesTotal > 0 ? Math.min(100, Math.floor((tr.bytesTransferred / tr.bytesTotal) * 100)) : 0}%`}
+                  class={`h-2 rounded ${progressClass(tr)}`}
+                  style={`width: ${progressPercent(tr)}%`}
                 ></div>
               </div>
               <div class="mt-1 flex items-center justify-between text-xs text-muted-foreground gap-3">

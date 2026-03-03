@@ -2,9 +2,12 @@ package webdav
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -24,6 +27,113 @@ func NewAdapter() *Adapter {
 	return &Adapter{}
 }
 
+func webdavProbeCandidates(connectPath string, username string, allowFallback bool) []string {
+	connectPath = strings.TrimSpace(connectPath)
+	if connectPath == "" {
+		connectPath = "/"
+	}
+	if !strings.HasPrefix(connectPath, "/") {
+		connectPath = "/" + connectPath
+	}
+	connectPath = path.Clean(connectPath)
+	if connectPath == "." {
+		connectPath = "/"
+	}
+	candidates := []string{connectPath}
+	if connectPath != "/" {
+		candidates = append(candidates, connectPath+"/")
+	}
+	if !allowFallback {
+		return candidates
+	}
+	if connectPath != "/" {
+		return candidates
+	}
+
+	common := []string{
+		"/webdav",
+		"/webdav/",
+		"/dav",
+		"/dav/",
+		"/remote.php/webdav",
+		"/remote.php/webdav/",
+		"/remote.php/dav",
+		"/remote.php/dav/",
+	}
+	if strings.TrimSpace(username) != "" {
+		u := url.PathEscape(username)
+		common = append(common,
+			"/remote.php/dav/files/"+u,
+			"/remote.php/dav/files/"+u+"/",
+		)
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(candidates)+len(common))
+	for _, p := range append(candidates, common...) {
+		p = path.Clean(strings.TrimSpace(p))
+		if p == "." {
+			p = "/"
+		}
+		if !strings.HasPrefix(p, "/") {
+			p = "/" + p
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func webdavOptionsProbe(ctx context.Context, base *url.URL, username string, password string, probePath string, timeout time.Duration) (bool, error) {
+	if base == nil {
+		return false, errors.New("invalid url")
+	}
+	if strings.TrimSpace(probePath) == "" {
+		probePath = "/"
+	}
+	u := *base
+	u.Path = probePath
+	u.RawQuery = ""
+	u.Fragment = ""
+
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	httpClient := &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("stopped after too many redirects")
+			}
+			req.Header.Set("Authorization", "Basic "+auth)
+			return nil
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodOptions, u.String(), nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Basic "+auth)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	_ = resp.Body.Close()
+
+	dav := strings.TrimSpace(resp.Header.Get("DAV"))
+	allow := strings.ToUpper(resp.Header.Get("Allow"))
+	if dav != "" || strings.Contains(allow, "PROPFIND") || strings.Contains(allow, "MKCOL") {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return false, transport.AuthError(fmt.Errorf("webdav auth failed: %s", resp.Status))
+	}
+	return false, fmt.Errorf("webdav options probe failed: %s", resp.Status)
+}
+
 func (a *Adapter) Test(ctx context.Context, profile models.ConnectionProfile) (time.Duration, error) {
 	started := time.Now()
 	client, err := a.Connect(ctx, profile)
@@ -39,9 +149,9 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 	if uri == "" {
 		return nil, transport.ValidationError(errors.New("url required"))
 	}
-	parsed, err := url.Parse(uri)
-	if err != nil {
-		return nil, transport.ValidationError(err)
+	parsed, parseErr := url.Parse(uri)
+	if parseErr != nil {
+		return nil, transport.ValidationError(parseErr)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, transport.ValidationError(errors.New("url must be http or https"))
@@ -54,8 +164,8 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 	portStr := strings.TrimSpace(parsed.Port())
 	port := 0
 	if portStr != "" {
-		p, err := strconv.Atoi(portStr)
-		if err != nil {
+		p, parseErr := strconv.Atoi(portStr)
+		if parseErr != nil {
 			return nil, transport.ValidationError(errors.New("invalid url port"))
 		}
 		port = p
@@ -90,11 +200,44 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 	timeout := transport.EffectiveTimeout(ctx, 10*time.Second)
 	client := gowebdav.NewClient(uri, username, password)
 	client.SetTimeout(timeout)
-	if err := client.Connect(); err != nil {
+	connectPath := strings.TrimSpace(profile.Path)
+	if connectPath == "" {
+		connectPath = strings.TrimSpace(parsed.Path)
+	}
+	base := &url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+	}
+	allowFallback := strings.TrimSpace(profile.Path) == "" && strings.TrimSpace(parsed.Path) == ""
+	candidates := webdavProbeCandidates(connectPath, username, allowFallback)
+
+	var probeErr error
+	for _, p := range candidates {
+		if _, statErr := client.Stat(p); statErr == nil {
+			probeErr = nil
+			break
+		} else {
+			probeErr = statErr
+			msg := strings.ToLower(statErr.Error())
+			if strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "unauthorized") || strings.Contains(msg, "forbidden") {
+				return nil, transport.AuthError(statErr)
+			}
+			if strings.Contains(msg, "405") || strings.Contains(msg, "method not allowed") {
+				if ok, optErr := webdavOptionsProbe(ctx, base, username, password, p, timeout); ok && optErr == nil {
+					probeErr = nil
+					break
+				} else if optErr != nil {
+					probeErr = optErr
+				}
+				continue
+			}
+		}
+	}
+	if probeErr != nil {
 		if ctx.Err() != nil {
 			return nil, transport.TimeoutError(ctx.Err())
 		}
-		return nil, classifyWebDAVError(err)
+		return nil, classifyWebDAVError(probeErr)
 	}
 	return client, nil
 }
@@ -109,6 +252,12 @@ func classifyWebDAVError(err error) error {
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "unauthorized") || strings.Contains(msg, "forbidden") {
 		return transport.AuthError(err)
+	}
+	if strings.Contains(msg, "405") || strings.Contains(msg, "method not allowed") {
+		return transport.ValidationError(fmt.Errorf("webdav not enabled at url/path (405): %w", err))
+	}
+	if strings.Contains(msg, "404") || strings.Contains(msg, "not found") {
+		return transport.ValidationError(fmt.Errorf("webdav endpoint not found (404): %w", err))
 	}
 	return transport.ProtocolError(err)
 }
@@ -253,7 +402,7 @@ func (a *Adapter) Upload(ctx context.Context, clientAny any, localPath string, r
 
 	reader := io.Reader(src)
 	if onProgress != nil {
-		reader = &progressReader{r: src, total: total, cb: onProgress}
+		reader = &progressReadSeeker{f: src, total: total, cb: onProgress}
 	}
 
 	if err := client.WriteStream(remotePath, reader, 0); err != nil {
@@ -353,4 +502,36 @@ func (p *progressReader) Read(b []byte) (int, error) {
 		}
 	}
 	return n, err
+}
+
+type progressReadSeeker struct {
+	f     *os.File
+	total int64
+	cb    func(written int64, total int64)
+	n     int64
+}
+
+func (p *progressReadSeeker) Read(b []byte) (int, error) {
+	n, err := p.f.Read(b)
+	if n > 0 {
+		p.n += int64(n)
+		if p.cb != nil {
+			p.cb(p.n, p.total)
+		}
+	}
+	return n, err
+}
+
+func (p *progressReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	pos, err := p.f.Seek(offset, whence)
+	if err != nil {
+		return pos, err
+	}
+	if offset == 0 && whence == 0 {
+		p.n = 0
+		if p.cb != nil {
+			p.cb(0, p.total)
+		}
+	}
+	return pos, nil
 }
