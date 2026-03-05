@@ -73,7 +73,9 @@ func (a *Adapter) Connect(ctx context.Context, profile models.ConnectionProfile)
 		_ = netConn.Close()
 		return nil, transport.ValidationError(errors.New("password required"))
 	}
-
+	if strings.HasPrefix(profile.Path, "/") {
+		profile.Path = profile.Path[1:]
+	}
 	shareName := strings.TrimSpace(profile.Path)
 	if shareName == "" {
 		_ = netConn.Close()
