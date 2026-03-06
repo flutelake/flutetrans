@@ -1,12 +1,25 @@
 import {derived, writable} from 'svelte/store'
 import {defaultLocale, messages, supportedLocales} from './messages.js'
 
-const STORAGE_KEY = 'fluteTrans.locale'
+const STORAGE_KEY_OVERRIDE = 'fluteTrans.localeOverride'
+const STORAGE_KEY_LEGACY = 'fluteTrans.locale'
 
 function safeGetStorageLocale() {
   try {
-    const v = globalThis?.localStorage?.getItem?.(STORAGE_KEY)
-    return v ? String(v) : ''
+    const storage = globalThis?.localStorage
+    const fromOverride = storage?.getItem?.(STORAGE_KEY_OVERRIDE)
+    if (fromOverride) return String(fromOverride)
+
+    const legacy = storage?.getItem?.(STORAGE_KEY_LEGACY)
+    if (legacy) {
+      try {
+        storage?.setItem?.(STORAGE_KEY_OVERRIDE, String(legacy))
+        storage?.removeItem?.(STORAGE_KEY_LEGACY)
+      } catch {}
+      return String(legacy)
+    }
+
+    return ''
   } catch {
     return ''
   }
@@ -38,6 +51,14 @@ function detectInitialLocale() {
 
 export const locale = writable(detectInitialLocale())
 export const localeOptions = supportedLocales
+
+export function setLocale(next) {
+  const v = normalizeLocale(next) || defaultLocale
+  locale.set(v)
+  try {
+    globalThis?.localStorage?.setItem?.(STORAGE_KEY_OVERRIDE, v)
+  } catch {}
+}
 
 function formatMessage(template, vars) {
   const text = String(template ?? '')
@@ -71,13 +92,9 @@ export const t = derived(locale, $locale => {
 locale.subscribe(next => {
   const v = normalizeLocale(next) || defaultLocale
   try {
-    globalThis?.localStorage?.setItem?.(STORAGE_KEY, v)
-  } catch {}
-  try {
     const doc = globalThis?.document
     if (doc?.documentElement) {
       doc.documentElement.lang = v === 'zh' ? 'zh-CN' : 'en'
     }
   } catch {}
 })
-

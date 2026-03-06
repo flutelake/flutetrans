@@ -1,7 +1,6 @@
 <script>
   import {Button} from '$lib/components/ui/button/index.js'
-  import {Select} from '$lib/components/ui/select/index.js'
-  import {locale, localeOptions, t} from '$lib/i18n/index.js'
+  import {locale, localeOptions, setLocale, t} from '$lib/i18n/index.js'
   import {cn} from '$lib/utils/cn.js'
   import Icon from '@iconify/svelte'
   import mdiCogOutline from '@iconify-icons/mdi/cog-outline'
@@ -104,13 +103,6 @@
     {/each}
   </div>
 
-  <div class="h-6 w-px bg-border"></div>
-  <Select className="h-8 w-[120px]" bind:value={$locale} aria-label={$t('nav.language')}>
-    {#each localeOptions as opt (opt.id)}
-      <option value={opt.id}>{opt.label}</option>
-    {/each}
-  </Select>
-
   {#if canLock && !locked}
     <div class="h-6 w-px bg-border"></div>
     <div class="relative" data-settings-menu>
@@ -127,6 +119,24 @@
 
       {#if openMenu}
         <div class="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-background shadow-md">
+          <div class="px-3 py-2 text-xs text-muted-foreground">{$t('nav.language')}</div>
+          {#each localeOptions as opt (opt.id)}
+            <button
+              type="button"
+              class={cn(
+                'flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-xs hover:bg-accent',
+                $locale === opt.id ? 'bg-accent/60' : ''
+              )}
+              on:click={() => setLocale(opt.id)}
+            >
+              <span>{opt.label}</span>
+              {#if $locale === opt.id}
+                <span class="text-muted-foreground">✓</span>
+              {/if}
+            </button>
+          {/each}
+
+          <div class="h-px bg-border my-1"></div>
           <button
             type="button"
             class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs hover:bg-accent"
