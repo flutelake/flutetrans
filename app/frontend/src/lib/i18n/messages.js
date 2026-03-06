@@ -40,6 +40,22 @@ export const messages = {
       masterPasswordPlaceholder: 'Master password',
       unlock: 'Unlock',
       unlockFailed: 'Unlock failed',
+      changePassword: 'Change password',
+      change: {
+        title: 'Change master password',
+        description: 'This will re-encrypt your saved credentials.',
+        currentPlaceholder: 'Current password',
+        newPlaceholder: 'New password',
+        confirmPlaceholder: 'Confirm new password',
+        submit: 'Update password',
+        successTitle: 'Password updated',
+        failedTitle: 'Update failed',
+        errors: {
+          newRequired: 'New password required',
+          minLength: 'Use at least {min} characters',
+          mismatch: 'Passwords do not match'
+        }
+      },
       errors: {
         required: 'Master password required',
         invalidMasterPassword: 'Incorrect master password',
@@ -234,6 +250,22 @@ export const messages = {
       masterPasswordPlaceholder: '主密码',
       unlock: '解锁',
       unlockFailed: '解锁失败',
+      changePassword: '修改密码',
+      change: {
+        title: '修改主密码',
+        description: '将重新加密已保存的凭据。',
+        currentPlaceholder: '当前密码',
+        newPlaceholder: '新密码',
+        confirmPlaceholder: '确认新密码',
+        submit: '更新密码',
+        successTitle: '密码已更新',
+        failedTitle: '更新失败',
+        errors: {
+          newRequired: '需要新密码',
+          minLength: '至少使用 {min} 个字符',
+          mismatch: '两次输入的密码不一致'
+        }
+      },
       errors: {
         required: '需要主密码',
         invalidMasterPassword: '主密码不正确',

@@ -5,6 +5,7 @@
   import {cn} from '$lib/utils/cn.js'
   import Icon from '@iconify/svelte'
   import mdiCogOutline from '@iconify-icons/mdi/cog-outline'
+  import mdiKeyOutline from '@iconify-icons/mdi/key-outline'
   import mdiLockOutline from '@iconify-icons/mdi/lock-outline'
   import {onMount} from 'svelte'
 
@@ -14,6 +15,7 @@
   export let locked = false
   export let canLock = false
   export let onLock = () => {}
+  export let onChangePassword = () => {}
 
   let openMenu = false
 
@@ -41,6 +43,11 @@
   function handleLock() {
     closeMenu()
     onLock()
+  }
+
+  function handleChangePassword() {
+    closeMenu()
+    onChangePassword()
   }
 
   function handleDocumentClick(event) {
@@ -120,6 +127,15 @@
 
       {#if openMenu}
         <div class="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-background shadow-md">
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs hover:bg-accent"
+            on:click={handleChangePassword}
+          >
+            <Icon icon={mdiKeyOutline} width={16} height={16} class="shrink-0 opacity-80" />
+            <span>{$t('security.changePassword')}</span>
+          </button>
+
           <div class="h-px bg-border my-1"></div>
           <button
             type="button"

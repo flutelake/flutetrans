@@ -4,6 +4,8 @@ import {models} from '../models';
 import {services} from '../models';
 import {context} from '../models';
 
+export function ChangeMasterPassword(arg1:string,arg2:string):Promise<void>;
+
 export function Connect(arg1:string):Promise<string>;
 
 export function CreateRemoteDir(arg1:string,arg2:string):Promise<void>;

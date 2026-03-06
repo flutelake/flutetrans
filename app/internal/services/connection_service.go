@@ -164,6 +164,62 @@ func (s *ConnectionService) LockMasterPassword() error {
 	return nil
 }
 
+func (s *ConnectionService) ChangeMasterPassword(currentPassphrase string, newPassphrase string) error {
+	currentPassphrase = strings.TrimSpace(currentPassphrase)
+	newPassphrase = strings.TrimSpace(newPassphrase)
+	if currentPassphrase == "" {
+		return validationError("master password required", nil)
+	}
+	if newPassphrase == "" {
+		return validationError("new master password required", nil)
+	}
+	if len(newPassphrase) < 8 {
+		return validationError("new master password too short", map[string]any{"minLength": 8})
+	}
+
+	oldSecure := crypto.NewSecureStore()
+	oldSecure.SetPassphrase(currentPassphrase)
+	oldStore, err := storage.NewConnectionStore(oldSecure)
+	if err != nil {
+		return storageError("failed to initialize store", map[string]any{"error": err.Error()})
+	}
+
+	has, err := oldStore.HasEncryptedFile()
+	if err != nil {
+		return storageError("failed to check encrypted store", map[string]any{"error": err.Error()})
+	}
+	if !has {
+		return validationError("master password not initialized", nil)
+	}
+
+	profiles, err := oldStore.Load()
+	if err != nil {
+		if errors.Is(err, crypto.ErrDecryptFailed) {
+			return newServiceError(ErrCodeAuth, "invalid master password", nil)
+		}
+		if errors.Is(err, crypto.ErrInvalidEnvelope) {
+			return cryptoError("invalid encrypted store", nil)
+		}
+		return cryptoError("failed to decrypt encrypted store", map[string]any{"error": err.Error()})
+	}
+
+	newSecure := crypto.NewSecureStore()
+	newSecure.SetPassphrase(newPassphrase)
+	newStore, err := storage.NewConnectionStore(newSecure)
+	if err != nil {
+		return storageError("failed to initialize store", map[string]any{"error": err.Error()})
+	}
+
+	if err := newStore.Save(profiles); err != nil {
+		if errors.Is(err, crypto.ErrLocked) {
+			return cryptoError("master password not set", nil)
+		}
+		return storageError("failed to rotate encrypted store", map[string]any{"error": err.Error()})
+	}
+
+	return s.SetMasterPassword(newPassphrase)
+}
+
 func (s *ConnectionService) ListConnections() ([]models.ConnectionProfile, error) {
 	profiles, err := s.loadAll()
 	if err != nil {

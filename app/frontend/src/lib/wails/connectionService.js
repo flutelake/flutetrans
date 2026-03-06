@@ -67,6 +67,10 @@ export function lockMasterPassword() {
   return call('LockMasterPassword')
 }
 
+export function changeMasterPassword(currentPassphrase, newPassphrase) {
+  return call('ChangeMasterPassword', currentPassphrase, newPassphrase)
+}
+
 export function listConnections() {
   return call('ListConnections')
 }
