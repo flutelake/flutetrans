@@ -3,6 +3,10 @@
   import {Select} from '$lib/components/ui/select/index.js'
   import {locale, localeOptions, t} from '$lib/i18n/index.js'
   import {cn} from '$lib/utils/cn.js'
+  import Icon from '@iconify/svelte'
+  import mdiCogOutline from '@iconify-icons/mdi/cog-outline'
+  import mdiLockOutline from '@iconify-icons/mdi/lock-outline'
+  import {onMount} from 'svelte'
 
   export let sessions = []
   export let current = 'connections'
@@ -10,6 +14,8 @@
   export let locked = false
   export let canLock = false
   export let onLock = () => {}
+
+  let openMenu = false
 
   function statusLabel(status) {
     const key = `status.${String(status ?? '')}`
@@ -23,6 +29,36 @@
     if (status === 'error') return 'bg-destructive/10 text-destructive border-destructive/30'
     return 'bg-muted text-muted-foreground border-border'
   }
+
+  function toggleMenu() {
+    openMenu = !openMenu
+  }
+
+  function closeMenu() {
+    openMenu = false
+  }
+
+  function handleLock() {
+    closeMenu()
+    onLock()
+  }
+
+  function handleDocumentClick(event) {
+    const path = event?.composedPath?.() ?? []
+    for (const el of path) {
+      if (el instanceof Element && el.hasAttribute('data-settings-menu')) {
+        return
+      }
+    }
+    closeMenu()
+  }
+
+  onMount(() => {
+    document.addEventListener('click', handleDocumentClick)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick)
+    }
+  })
 </script>
 
 <div class="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-2">
@@ -70,6 +106,31 @@
 
   {#if canLock && !locked}
     <div class="h-6 w-px bg-border"></div>
-    <Button size="sm" variant="outline" on:click={onLock}>{$t('nav.lock')}</Button>
+    <div class="relative" data-settings-menu>
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label={$t('common.actions')}
+        aria-haspopup="menu"
+        aria-expanded={openMenu}
+        on:click={toggleMenu}
+      >
+        <Icon icon={mdiCogOutline} width={18} height={18} class="opacity-80" />
+      </Button>
+
+      {#if openMenu}
+        <div class="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-background shadow-md">
+          <div class="h-px bg-border my-1"></div>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs hover:bg-accent"
+            on:click={handleLock}
+          >
+            <Icon icon={mdiLockOutline} width={16} height={16} class="shrink-0 opacity-80" />
+            <span>{$t('nav.lock')}</span>
+          </button>
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
