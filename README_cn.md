@@ -1,7 +1,9 @@
+[English version](README.md) | 中文版
+
 # FluteTrans
 
 <p align="center">
-  <img src="assets/flutetrans_icon.png" alt="App Icon" width="160" />
+  <img src="assets/flutetrans_icon.png" alt="App Icon" width="320" />
 </p>
 
 FluteTrans 是一个跨平台桌面文件传输与远程文件管理工具，支持多种常见协议（FTP/SFTP/WebDAV/SMB/NFS/S3）。项目使用 Wails（Go）作为后端，Svelte + Vite 作为前端，提供连接管理、文件浏览、上传下载与传输队列等能力。

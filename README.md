@@ -1,7 +1,9 @@
+English version | [中文版](README_cn.md) 
+
 # FluteTrans
 
 <p align="center">
-  <img src="assets/flutetrans_icon.png" alt="App Icon" width="160" />
+  <img src="assets/flutetrans_icon.png" alt="App Icon" width="320" />
 </p>
 
 FluteTrans is a cross-platform desktop app for file transfer and remote file management. It supports multiple common protocols (FTP/SFTP/WebDAV/SMB/NFS/S3). The project uses Wails (Go) for the backend and Svelte + Vite for the frontend, providing connection management, file browsing, uploads/downloads, and a transfer queue.
