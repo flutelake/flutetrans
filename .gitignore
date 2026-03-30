@@ -19,7 +19,6 @@ vendor/
 
 node_modules/
 dist/
-build/
 .svelte-kit/
 coverage/
 npm-debug.log*
