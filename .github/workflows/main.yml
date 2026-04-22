@@ -1,0 +1,134 @@
+name: Release build
+
+on:
+  push:
+    tags:
+      - '*'
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - platform: 'linux/amd64'
+            # platform_name: 'linux_amd64'
+            os: 'ubuntu-24.04'
+            output_name: 'fluteTrans_linux_amd64'
+          - platform: 'linux/arm64'
+            # platform_name: 'linux_arm64'
+            os: 'ubuntu-24.04-arm64'
+            output_name: 'fluteTrans_linux_arm64'
+          - platform: 'windows/amd64'
+            # platform_name: 'win_amd64'
+            os: 'windows-latest'
+            output_name: 'fluteTrans_win_amd64.exe'
+          - platform: 'darwin/arm64'
+            # platform_name: 'macos_arm64'
+            os: 'macos-latest'
+            output_name: 'fluteTrans_macos_arm64.dmg'
+          - platform: 'darwin/amd64'
+            # platform_name: 'macos_amd64'
+            os: 'macos-latest'
+            output_name: 'fluteTrans_macos_amd64.dmg'
+
+    runs-on: ${{ matrix.build.os }}
+    steps:
+      # 1. 检出代码 (升级到 v4)
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. 安装 Go 环境 (升级到 v5)
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24' # 建议用 1.21+ 稳定性更好
+
+      # 3. 安装 Node.js (v4)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 4. 安装 Linux 系统依赖 (仅 Ubuntu 需要)
+      - name: Install Linux Dependencies
+        if: contains(matrix.build.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          # 核心修复：创建一个 pkg-config 的指向，让系统在找 4.0 时自动重定向到 4.1
+          # 这能解决大部分 Wails 项目在较新 Ubuntu 下的编译报错
+          sudo ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.0.pc
+
+      # 5. 安装 Wails 命令行工具
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      # 6. 执行 Wails Build
+      # 注意：这里我们手动指定平台，确保生成的文件符合矩阵定义
+      - name: Build fluteTrans App
+        shell: bash
+        run: |
+          cd app
+          $(go env GOPATH)/bin/wails build -platform ${{ matrix.build.platform }}
+          # 进入产物目录
+          cd build/bin/
+          
+          # 根据不同系统处理重命名逻辑
+          if [ "${{ matrix.build.os }}" = "windows-latest" ]; then
+            mv *.exe ${{ matrix.build.output_name }}
+          elif [ "${{ matrix.build.os }}" = "macos-latest" ]; then
+            echo "macos don't need move"
+          else
+            # Linux 处理
+            mv fluteTrans ${{ matrix.build.output_name }}
+          fi
+
+      - name: Set Execution Permission (Linux)
+        if: contains(matrix.build.os, 'ubuntu')
+        run: chmod +x app/build/bin/${{ matrix.build.output_name }}
+      
+      - name: Set Execution Permission (MacOS)
+        if: matrix.build.os == 'macos-latest'
+        run: chmod +x app/build/bin/fluteTrans.app
+
+      - name: Checkout create-image
+        if: matrix.build.os == 'macos-latest'
+        uses: actions/checkout@v2
+        with:
+          repository: create-dmg/create-dmg
+          path: app/build/create-dmg
+          ref: master
+      
+      - name: Build macOS DMG
+        if: matrix.build.os == 'macos-latest'
+        shell: bash
+        working-directory: app/build
+        run: |
+          ./create-dmg/create-dmg \
+            --no-internet-enable \
+            --volname "fluteTrans" \
+            --volicon "bin/fluteTrans.app/Contents/Resources/iconfile.icns" \
+            --background "background.png" \
+            --text-size 12 \
+            --window-pos 400 400 \
+            --window-size 656 408 \
+            --icon-size 120 \
+            --icon "fluteTrans.app" 162 217 \
+            --hide-extension "fluteTrans.app" \
+            --app-drop-link 494 217 \
+            "bin/fluteTrans.dmg" \
+            "bin"
+          mv bin/fluteTrans.dmg bin/${{ matrix.build.output_name }}
+
+      # 7. 上传编译产物
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.build.output_name }}
+          path: app/build/bin/${{ matrix.build.output_name }}
